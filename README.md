@@ -9,8 +9,8 @@ This repository implements the core vertical slice:
 - task and session lifecycles, pause/resume/terminate controls, and recursive spawning to depth five;
 - deny-by-default target policy, one-time human approval gates, audit events, bounded scan settings, and authenticated worker callbacks;
 - real adapters for Playwright, Nmap, Gobuster, Semgrep, TruffleHog, and a license-safe bring-your-own-JAR Burp runtime;
-- PostgreSQL persistence, Redis dispatch, isolated Docker execution, SSE updates, and artifact storage;
-- a responsive Next.js console for the live swarm, searchable evidence graph, logs, findings, scope, registry, approvals, and Markdown reports.
+- project-partitioned PostgreSQL persistence, Redis dispatch, isolated Docker execution, SSE updates, and artifact storage;
+- a responsive Next.js console with fast project switching, live swarm and scope graphs, searchable application topology, finding-path drill-downs, logs, registry, approvals, and Markdown reports.
 
 ## Local preview
 
@@ -23,6 +23,8 @@ npm run dev
 ```
 
 Open `http://localhost:3000`. The API runs at `http://localhost:4100`. Local development intentionally uses in-memory state and simulated execution, so the complete policy and UI flow can be evaluated without granting Docker authority or scanning a target.
+
+Use the project control in the top bar or sidebar to create and switch assessments. Each project owns an independent scope, run tree, graph, finding set, artifacts, activity stream, and report. The console offers separate XYFlow views for application topology, recursive swarm execution, and scope decisions; select a finding in a graph or list to open its evidence-path drawer and inspect structured node metadata.
 
 ## Complete stack
 

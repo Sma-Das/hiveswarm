@@ -4,6 +4,7 @@ import {
   createEngagementSchema,
   orchestrateRequestSchema,
   spawnAgentRequestSchema,
+  type Dashboard,
 } from "@hiveswarm/contracts";
 import Fastify from "fastify";
 import { ZodError } from "zod";
@@ -59,9 +60,7 @@ const orchestrationLoop = new OrchestrationLoop(
 );
 
 async function assertCurrentRun(runId: string) {
-  const dashboard = await store.getDashboard();
-  const currentRunId = dashboard.agents.find((agent) => agent.depth === 0)?.runId ?? dashboard.engagement.id;
-  if (runId !== currentRunId) throw new Error("Run not found.");
+  await store.getDashboardForRun(runId);
 }
 
 app.setErrorHandler((error, _request, reply) => {
@@ -73,10 +72,20 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 app.get("/health", async () => ({ ok: true, storage: config.storageDriver, execution: config.executionDriver }));
-app.get("/api/dashboard", async () => store.getDashboard());
+app.get("/api/projects", async () => ({ activeProjectId: await store.getActiveProjectId(), projects: await store.listProjects() }));
+app.post("/api/projects/:projectId/activate", async (request) => {
+  const { projectId } = request.params as { projectId: string };
+  await store.setActiveProject(projectId);
+  await store.appendAudit({ id: id("audit"), actor: "human", action: "project.activated", resource: projectId, detail: {}, createdAt: new Date().toISOString() });
+  return { activeProjectId: projectId };
+});
+app.get("/api/dashboard", async (request) => {
+  const { projectId } = z.object({ projectId: z.string().optional() }).parse(request.query ?? {});
+  return store.getDashboard(projectId);
+});
 app.get("/api/reports/current", async (request, reply) => {
-  const report = generateReport(await store.getDashboard());
-  const { format, download } = z.object({ format: z.enum(["json", "markdown"]).default("json"), download: z.enum(["0", "1"]).default("0") }).parse(request.query ?? {});
+  const { format, download, projectId } = z.object({ format: z.enum(["json", "markdown"]).default("json"), download: z.enum(["0", "1"]).default("0"), projectId: z.string().optional() }).parse(request.query ?? {});
+  const report = generateReport(await store.getDashboard(projectId));
   if (format === "markdown") {
     if (download === "1") reply.header("Content-Disposition", `attachment; filename="hiveswarm-${report.engagement.id}.md"`);
     return reply.type("text/markdown; charset=utf-8").send(reportAsMarkdown(report));
@@ -107,10 +116,10 @@ app.post("/api/agents/install", async (request, reply) => {
   return reply.status(201).send({ manifest });
 });
 app.post("/api/scope/rules", async (request, reply) => {
-  const input = z.object({ kind: z.enum(["host", "domain", "cidr", "url-prefix", "repository"]), value: z.string().min(1).max(2048), action: z.enum(["allow", "deny"]) }).parse(request.body);
-  const dashboard = await store.getDashboard();
+  const input = z.object({ projectId: z.string().optional(), kind: z.enum(["host", "domain", "cidr", "url-prefix", "repository"]), value: z.string().min(1).max(2048), action: z.enum(["allow", "deny"]) }).parse(request.body);
+  const dashboard = await store.getDashboard(input.projectId);
   if (dashboard.engagement.scopeRules.some((rule) => rule.kind === input.kind && rule.value === input.value && rule.action === input.action)) throw new Error("An identical scope rule already exists.");
-  const rule = { id: id("scope"), ...input };
+  const rule = { id: id("scope"), kind: input.kind, value: input.value, action: input.action };
   dashboard.engagement.scopeRules.push(rule);
   await store.saveDashboard(dashboard);
   await store.appendAudit({ id: id("audit"), actor: "human", action: "scope.rule.added", resource: rule.id, detail: rule, createdAt: new Date().toISOString() });
@@ -118,7 +127,8 @@ app.post("/api/scope/rules", async (request, reply) => {
 });
 app.delete("/api/scope/rules/:ruleId", async (request, reply) => {
   const { ruleId } = request.params as { ruleId: string };
-  const dashboard = await store.getDashboard();
+  const { projectId } = z.object({ projectId: z.string().optional() }).parse(request.query ?? {});
+  const dashboard = await store.getDashboard(projectId);
   const rule = dashboard.engagement.scopeRules.find((item) => item.id === ruleId);
   if (!rule) return reply.status(404).send({ error: "Scope rule not found." });
   if (rule.action === "allow" && dashboard.engagement.scopeRules.filter((item) => item.action === "allow").length === 1) return reply.status(422).send({ error: "Keep at least one allow rule before removing this boundary." });
@@ -129,12 +139,14 @@ app.delete("/api/scope/rules/:ruleId", async (request, reply) => {
 });
 app.post("/api/engagements", async (request, reply) => {
   const input = createEngagementSchema.parse(request.body);
-  const dashboard = await store.getDashboard();
   const engagementId = id("eng");
   const startedAt = new Date().toISOString();
   const orchestratorRunId = id("ar");
-  dashboard.engagement = { id: engagementId, name: input.name, target: input.target, status: "planning", startedAt, scopeRules: input.scopeRules };
-  dashboard.agents = [{
+  const engagementNodeId = id("node");
+  const orchestratorNodeId = id("node");
+  const dashboard: Dashboard = {
+    engagement: { id: engagementId, name: input.name, target: input.target, status: "planning", startedAt, scopeRules: input.scopeRules },
+    agents: [{
     id: orchestratorRunId,
     runId: engagementId,
     parentAgentRunId: null,
@@ -148,28 +160,31 @@ app.post("/api/engagements", async (request, reply) => {
     startedAt,
     completedAt: null,
     logCount: 1,
-  }];
-  dashboard.findings = [];
-  dashboard.approvals = [];
-  dashboard.graph = { nodes: [
-    { id: id("node"), kind: "engagement", label: input.name, subtitle: input.target, status: "planning", metadata: {}, discoveredBy: "Orchestrator", createdAt: startedAt },
-    { id: id("node"), kind: "agent", label: "Orchestrator", subtitle: "Control plane", status: "running", metadata: { agentRunId: orchestratorRunId }, discoveredBy: "HiveSwarm", createdAt: startedAt },
-  ], edges: [] };
-  dashboard.logs = [{ id: id("log"), agentRunId: orchestratorRunId, level: "info", message: "Engagement initialized. Waiting for an evaluation objective.", timestamp: startedAt }];
-  dashboard.artifacts = [];
-  dashboard.metrics = { activeAgents: 1, assets: 1, findings: 0, pendingApprovals: 0 };
+    }],
+    findings: [],
+    approvals: [],
+    graph: { nodes: [
+      { id: engagementNodeId, kind: "engagement", label: input.name, subtitle: input.target, status: "planning", metadata: {}, discoveredBy: "Orchestrator", createdAt: startedAt },
+      { id: orchestratorNodeId, kind: "agent", label: "Orchestrator", subtitle: "Control plane", status: "running", metadata: { agentRunId: orchestratorRunId }, discoveredBy: "HiveSwarm", createdAt: startedAt },
+    ], edges: [{ id: id("edge"), source: engagementNodeId, target: orchestratorNodeId, relationship: "orchestrated_by", metadata: {} }] },
+    logs: [{ id: id("log"), agentRunId: orchestratorRunId, level: "info", message: "Engagement initialized. Waiting for an evaluation objective.", timestamp: startedAt }],
+    artifacts: [],
+    metrics: { activeAgents: 1, assets: 1, findings: 0, pendingApprovals: 0 },
+  };
   await store.saveDashboard(dashboard);
+  await store.setActiveProject(engagementId);
+  await store.appendAudit({ id: id("audit"), actor: "human", action: "project.created", resource: engagementId, detail: { name: input.name, target: input.target }, createdAt: startedAt });
   return reply.status(201).send({ engagement: dashboard.engagement });
 });
 app.post("/api/runs/:runId/plan", async (request) => {
   const { runId } = request.params as { runId: string };
   await assertCurrentRun(runId);
-  return planner.createPlan(await store.getDashboard(), await registry.list());
+  return planner.createPlan(await store.getDashboardForRun(runId), await registry.list());
 });
 app.post("/api/runs/:runId/orchestrate", async (request) => {
   const { runId } = request.params as { runId: string };
   await assertCurrentRun(runId);
-  return orchestrationLoop.run(orchestrateRequestSchema.parse(request.body ?? {}));
+  return orchestrationLoop.run(orchestrateRequestSchema.parse(request.body ?? {}), runId);
 });
 app.post("/api/runs/:runId/state", async (request) => {
   const { runId } = request.params as { runId: string };
@@ -179,7 +194,7 @@ app.post("/api/runs/:runId/state", async (request) => {
 app.post("/api/runs/:runId/agents", async (request, reply) => {
   const { runId } = request.params as { runId: string };
   await assertCurrentRun(runId);
-  const result = await orchestrator.spawn(spawnAgentRequestSchema.parse(request.body));
+  const result = await orchestrator.spawn(spawnAgentRequestSchema.parse(request.body), runId);
   return reply.status(201).send(result);
 });
 app.post("/api/approvals/:approvalId/decision", async (request) => {

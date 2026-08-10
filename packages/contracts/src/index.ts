@@ -212,6 +212,17 @@ export const dashboardSchema = z.object({
 });
 export type Dashboard = z.infer<typeof dashboardSchema>;
 
+export const projectSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  target: z.string(),
+  status: runStatusSchema,
+  startedAt: z.string(),
+  metrics: dashboardSchema.shape.metrics,
+  agentCount: z.number().int().nonnegative(),
+});
+export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+
 export const spawnAgentRequestSchema = z.object({
   agentId: z.string(),
   lifecycle: agentLifecycleSchema,

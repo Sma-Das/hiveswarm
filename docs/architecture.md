@@ -19,12 +19,25 @@ Browser console ── HTTP + SSE ──> Orchestration API ── snapshot/audi
 
 ## Control flow
 
-1. A human creates an engagement with at least one explicit allow boundary.
+1. A human creates a project with at least one explicit allow boundary. Projects are independently addressable snapshots; switching the visible project does not redirect callbacks, controls, or model work already running in another project.
 2. The orchestrator reads enabled manifests and asks a model provider to call `spawn_specialist`; without a provider key it produces the same bounded starter plan deterministically.
 3. Every call is revalidated locally. Model output cannot grant scope, lifecycle, recursion, or capability authority.
 4. Approved executions enter Redis. The worker resolves the current installed manifest, creates a constrained container, and translates its typed NDJSON into authenticated API callbacks.
 5. Nodes, relationships, findings, screenshots, logs, child spawn requests, and scope proposals update the materialized graph and stream to the console.
 6. The report generator derives risk totals, vulnerability paths, coverage, artifacts, and limitations from current evidence.
+
+## Project and graph model
+
+Every agent execution carries its originating run ID. The API resolves run, agent, approval, and callback mutations to that project rather than relying on the console's active project. Scope writes and report reads also accept an explicit project ID. This keeps simultaneous or background evaluations isolated while retaining a lightweight active-project preference for the local console.
+
+The materialized evidence model supports several connected projections instead of one overloaded graph:
+
+- topology connects servers, services, vhosts, applications, routes, repositories, identities, and findings;
+- swarm connects the orchestrator, recursive task/session agents, lifecycle state, and the findings each branch raised;
+- scope connects allow/deny rules and explorer proposals awaiting human review;
+- finding paths walk backward through supporting evidence and open in a side drawer with the underlying structured node data.
+
+These are views over the same typed nodes, edges, executions, and finding records, so selecting a finding can move from execution provenance to its application attack path without duplicating evidence.
 
 ## Agent tree and lifecycle
 
@@ -44,7 +57,7 @@ The included API has no end-user authentication and is intended for a trusted lo
 
 ## Persistence and concurrency
 
-The current implementation stores a materialized dashboard in a transactional PostgreSQL JSONB snapshot, with agent versions and audit events in separate tables. API-process mutations are serialized to avoid callback races. This is sufficient for the vertical slice; horizontally scaled APIs should replace it with row-level transactions or an event-sourced reducer.
+The current implementation stores one materialized dashboard per project in transactional PostgreSQL JSONB snapshots, with a small workspace record for the active project and agent versions/audit events in separate tables. Legacy single-dashboard data is migrated non-destructively on startup. API-process mutations are serialized to avoid callback races. This is sufficient for the vertical slice; horizontally scaled APIs should replace it with row-level transactions or an event-sourced reducer.
 
 ## Extensibility
 

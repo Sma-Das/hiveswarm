@@ -14,17 +14,17 @@ export function EngagementDialog({ open, onClose, onCreate }: { open: boolean; o
         event.preventDefault(); setBusy(true); setError("");
         const data = new FormData(event.currentTarget);
         try { await onCreate({ name: String(data.get("name")), target: String(data.get("target")) }); onClose(); }
-        catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to create the engagement."); }
+        catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to create the project."); }
         finally { setBusy(false); }
       }}>
-        <div className="dialog__header"><div><p className="eyebrow">Authorized target</p><h2 id="engagement-title">Create an engagement</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} aria-hidden="true" /></button></div>
+        <div className="dialog__header"><div><p className="eyebrow">Authorized target</p><h2 id="engagement-title">Create a project</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} aria-hidden="true" /></button></div>
         <div className="form-grid">
-          <label className="form-grid__wide">Engagement name<input name="name" aria-label="Engagement name" required placeholder="Northstar portal" /></label>
+          <label className="form-grid__wide">Project name<input name="name" aria-label="Project name" required placeholder="Northstar portal" /></label>
           <label className="form-grid__wide">Primary target<input name="target" aria-label="Primary target" required placeholder="https://app.example.test" /></label>
         </div>
         <p className="form-hint">HiveSwarm creates one exact-host allow rule. Add broader domain, URL, CIDR, or repository boundaries from Scope after creation.</p>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
-        <div className="dialog__actions"><button type="button" className="button button--quiet" onClick={onClose}>Cancel</button><button className="button button--primary" disabled={busy}>{busy ? "Creating engagement" : "Create engagement"}</button></div>
+        <div className="dialog__actions"><button type="button" className="button button--quiet" onClick={onClose}>Cancel</button><button className="button button--primary" disabled={busy}>{busy ? "Creating project" : "Create project"}</button></div>
       </form>
     </dialog>
   );

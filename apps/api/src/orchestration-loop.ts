@@ -83,12 +83,12 @@ export class OrchestrationLoop {
     private readonly modelProvider?: ModelProvider,
   ) {}
 
-  async run(options: OrchestrateRequest): Promise<OrchestrationOutcome> {
-    return this.modelProvider ? this.runWithModel(options) : this.runDeterministic(options);
+  async run(options: OrchestrateRequest, runId: string): Promise<OrchestrationOutcome> {
+    return this.modelProvider ? this.runWithModel(options, runId) : this.runDeterministic(options, runId);
   }
 
-  private async runDeterministic(options: OrchestrateRequest): Promise<OrchestrationOutcome> {
-    const dashboard = await this.store.getDashboard();
+  private async runDeterministic(options: OrchestrateRequest, runId: string): Promise<OrchestrationOutcome> {
+    const dashboard = await this.store.getDashboardForRun(runId);
     const agents = await this.registry.list();
     const plan = await this.fallbackPlanner.createPlan(dashboard, agents);
     const spawned: OrchestrationOutcome["spawned"] = [];
@@ -101,14 +101,14 @@ export class OrchestrationLoop {
         target: dashboard.engagement.target,
         ...(parentAgentRunId ? { parentAgentRunId } : {}),
         requestedCapabilities: [],
-      }));
+      }), runId);
       spawned.push({ agentRunId: result.agentRun.id, agentId: result.agentRun.agentId, approvalRequired: result.approvalRequired });
     }
     return { provider: "deterministic", summary: plan.summary, turns: 1, spawned, stoppedReason: plan.steps.length > options.maxAgents ? "agent_limit" : "completed" };
   }
 
-  private async runWithModel(options: OrchestrateRequest): Promise<OrchestrationOutcome> {
-    const dashboard = await this.store.getDashboard();
+  private async runWithModel(options: OrchestrateRequest, runId: string): Promise<OrchestrationOutcome> {
+    const dashboard = await this.store.getDashboardForRun(runId);
     const agents = (await this.registry.list()).filter((agent) => agent.enabled);
     const installedIds = new Set(agents.map((agent) => agent.id));
     const root = dashboard.agents.find((agent) => agent.depth === 0);
@@ -174,7 +174,7 @@ export class OrchestrationLoop {
             const result = await this.orchestrator.spawn(spawnAgentRequestSchema.parse({
               ...parsed,
               ...(parsed.parentAgentRunId ? { parentAgentRunId: parsed.parentAgentRunId } : root ? { parentAgentRunId: root.id } : {}),
-            }));
+            }), runId);
             spawned.push({ agentRunId: result.agentRun.id, agentId: result.agentRun.agentId, approvalRequired: result.approvalRequired });
             output = { ok: true, agentRunId: result.agentRun.id, status: result.agentRun.status, approvalRequired: result.approvalRequired };
           }

@@ -20,7 +20,9 @@ The `agents` Compose profile is a build catalog, not a long-running service set.
 
 ## Engagement workflow
 
-Create an engagement in the console. HiveSwarm adds one exact-host allow rule inferred from the primary URL/host. Add domain, URL-prefix, CIDR, and repository rules in Scope. Explicit deny rules always win. Use Run orchestrator to start the provider-selected or deterministic initial swarm.
+Create a project in the console. HiveSwarm adds one exact-host allow rule inferred from the primary URL/host. Add domain, URL-prefix, CIDR, and repository rules in Scope. Explicit deny rules always win. Use Run orchestrator to start the provider-selected or deterministic initial swarm.
+
+The project switcher summarizes status, agent count, and findings without merging evidence. A project can keep running after you switch away; callbacks, approvals, lifecycle controls, scope changes, and reports resolve against their originating project. Use Topology for assets and application relationships, Swarm for recursive execution provenance, Scope map for boundaries and human-review candidates, and a finding drawer for the supporting path and structured evidence.
 
 Scope proposals and sensitive capabilities pause only the affected action for a human decision. Approve once does not create a reusable capability grant. Explorer host approvals do create the exact requested allow rule and remove a matching exact deny rule. The activity feed and audit table preserve the decision trail.
 

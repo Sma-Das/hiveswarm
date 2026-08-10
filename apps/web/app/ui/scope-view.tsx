@@ -1,19 +1,22 @@
 "use client";
 
-import type { ScopeRule } from "@hiveswarm/contracts";
+import type { Dashboard, GraphNode, ScopeRule } from "@hiveswarm/contracts";
 import { Ban, Check, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { ScopeGraph } from "./security-graph";
 
-export function ScopeView({ rules, onAdd, onRemove }: {
-  rules: ScopeRule[];
+export function ScopeView({ dashboard, onAdd, onRemove, onInspect }: {
+  dashboard: Dashboard;
   onAdd: (rule: Omit<ScopeRule, "id">) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
+  onInspect: (node: GraphNode | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
     <section className="management-view" aria-labelledby="scope-title">
       <div className="management-heading"><div><p className="eyebrow">Deny by default</p><h2 id="scope-title">Scope policy</h2><p>Every specialist target is checked against these ordered boundaries before execution.</p></div></div>
+      <div className="scope-graph-panel"><ScopeGraph dashboard={dashboard} onSelect={onInspect} /></div>
       <form className="scope-form" onSubmit={async (event) => {
         event.preventDefault(); setBusy(true); setError("");
         const form = event.currentTarget;
@@ -31,7 +34,7 @@ export function ScopeView({ rules, onAdd, onRemove }: {
         {error ? <p className="form-error" role="alert">{error}</p> : null}
       </form>
       <div className="scope-list">
-        {rules.map((rule) => (
+        {dashboard.engagement.scopeRules.map((rule) => (
           <article key={rule.id} className={`scope-rule scope-rule--${rule.action}`}>
             <span>{rule.action === "allow" ? <Check size={17} aria-hidden="true" /> : <Ban size={17} aria-hidden="true" />}</span>
             <div><strong>{rule.action === "allow" ? "Allow" : "Deny"} {rule.kind}</strong><bdi>{rule.value}</bdi></div>

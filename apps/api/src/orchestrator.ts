@@ -32,12 +32,12 @@ export class OrchestratorService {
     finally { release(); }
   }
 
-  async spawn(request: SpawnAgentRequest): Promise<{ agentRun: AgentRun; approvalRequired: boolean }> {
-    return this.serial(() => this.spawnUnsafe(request));
+  async spawn(request: SpawnAgentRequest, runId?: string): Promise<{ agentRun: AgentRun; approvalRequired: boolean }> {
+    return this.serial(() => this.spawnUnsafe(request, runId));
   }
 
-  private async spawnUnsafe(request: SpawnAgentRequest): Promise<{ agentRun: AgentRun; approvalRequired: boolean }> {
-    const dashboard = await this.store.getDashboard();
+  private async spawnUnsafe(request: SpawnAgentRequest, runId?: string): Promise<{ agentRun: AgentRun; approvalRequired: boolean }> {
+    const dashboard = runId ? await this.store.getDashboardForRun(runId) : await this.store.getDashboard();
     if (dashboard.engagement.status === "paused") throw new Error("The engagement is paused; resume it before starting another agent.");
     if (["completed", "failed", "cancelled"].includes(dashboard.engagement.status)) throw new Error("The engagement is not active.");
     const manifest = await this.registry.get(request.agentId);
@@ -81,7 +81,7 @@ export class OrchestratorService {
   }
 
   private async decideApprovalUnsafe(approvalId: string, decision: "approved" | "denied", note?: string) {
-    const dashboard = await this.store.getDashboard();
+    const dashboard = await this.store.getDashboardForApproval(approvalId);
     const wasPaused = dashboard.engagement.status === "paused";
     const approval = dashboard.approvals.find((item) => item.id === approvalId);
     if (!approval || approval.status !== "pending") throw new Error("Pending approval not found.");
@@ -115,9 +115,8 @@ export class OrchestratorService {
 
   private async ingestUnsafe(agentRunId: string, input: unknown): Promise<unknown> {
     const event = agentEventSchema.parse(input);
-    const dashboard = await this.store.getDashboard();
-    const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId);
-    if (!agentRun) throw new Error("Agent execution not found.");
+    const dashboard = await this.store.getDashboardForAgent(agentRunId);
+    const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId)!;
     if (["completed", "failed", "terminated"].includes(agentRun.status)) throw new Error("Agent execution is no longer active.");
     if (agentRun.status === "queued" || agentRun.status === "starting") {
       agentRun.status = "running";
@@ -125,7 +124,7 @@ export class OrchestratorService {
     }
     if (event.type === "spawn_request") {
       await this.store.saveDashboard(dashboard);
-      return this.spawnUnsafe({ ...event.request, parentAgentRunId: agentRun.id });
+      return this.spawnUnsafe({ ...event.request, parentAgentRunId: agentRun.id }, agentRun.runId);
     }
     this.applyEvent(dashboard, agentRun, event);
     this.refreshMetrics(dashboard);
@@ -139,9 +138,8 @@ export class OrchestratorService {
   }
 
   private async completeUnsafe(agentRunId: string, outcome: "completed" | "failed", message?: string) {
-    const dashboard = await this.store.getDashboard();
-    const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId);
-    if (!agentRun) throw new Error("Agent execution not found.");
+    const dashboard = await this.store.getDashboardForAgent(agentRunId);
+    const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId)!;
     if (agentRun.status === "terminated") return agentRun;
     agentRun.status = outcome;
     agentRun.completedAt = new Date().toISOString();
@@ -160,9 +158,8 @@ export class OrchestratorService {
   }
 
   private async terminateUnsafe(agentRunId: string) {
-    const dashboard = await this.store.getDashboard();
-    const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId);
-    if (!agentRun) throw new Error("Agent execution not found.");
+    const dashboard = await this.store.getDashboardForAgent(agentRunId);
+    const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId)!;
     if (["completed", "failed", "terminated"].includes(agentRun.status)) return agentRun;
     agentRun.status = "terminated";
     agentRun.completedAt = new Date().toISOString();
@@ -181,14 +178,13 @@ export class OrchestratorService {
   }
 
   private async setRunStateUnsafe(runId: string, status: "running" | "paused") {
-    const dashboard = await this.store.getDashboard();
-    if (dashboard.agents.length && dashboard.agents.every((agent) => agent.runId !== runId)) throw new Error("Run not found.");
+    const dashboard = await this.store.getDashboardForRun(runId);
     dashboard.engagement.status = status;
     const controllable = dashboard.agents.filter((agent) => ["running", "starting", "waiting_approval"].includes(agent.status));
     await this.store.saveDashboard(dashboard);
     await this.executor.controlRun(runId, status === "paused" ? "pause" : "resume", controllable.map((agent) => agent.id));
     if (status === "running") {
-      const latest = await this.store.getDashboard();
+      const latest = await this.store.getDashboardForRun(runId);
       const queuedAgents = latest.agents.filter((agent) => agent.status === "queued");
       for (const queued of queuedAgents) queued.status = "starting";
       if (queuedAgents.length) await this.store.saveDashboard(latest);

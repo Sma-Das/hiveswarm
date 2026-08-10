@@ -1,24 +1,26 @@
 "use client";
 
-import type { AgentManifest, Dashboard, GraphNode, SpawnAgentRequest } from "@hiveswarm/contracts";
+import type { AgentManifest, Dashboard, Finding, GraphNode, ProjectSummary, SpawnAgentRequest } from "@hiveswarm/contracts";
 import {
-  Activity, Bot, Boxes, CircleDotDashed, Command, FileSearch, FileText,
-  Hexagon, LayoutDashboard, Network, Play, Plus, Search, ShieldCheck, Target, X,
+  Activity, Bot, Boxes, ChevronDown, CircleDotDashed, Command, FileSearch, FileText,
+  GitFork, Hexagon, LayoutDashboard, Network, Play, Plus, Search, ShieldCheck, Target, Waypoints, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgentRow } from "./agent-row";
 import { ApprovalCard } from "./approval-card";
 import { HiveMark } from "./brand";
-import { SecurityGraph } from "./security-graph";
+import { ScopeGraph, SecurityGraph, SwarmGraph } from "./security-graph";
 import { SeverityBadge, Status } from "./status";
 import { SpawnDialog } from "./spawn-dialog";
 import { EngagementDialog } from "./engagement-dialog";
 import { RegistryView } from "./registry-view";
 import { ReportView, type ReportData } from "./report-view";
 import { ScopeView } from "./scope-view";
+import { ProjectSwitcher } from "./project-switcher";
+import { FindingDrawer } from "./finding-drawer";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
-type EvidenceView = "graph" | "findings" | "activity";
+type EvidenceView = "topology" | "swarm" | "scope" | "findings" | "activity";
 type PageView = "evaluation" | "registry" | "findings" | "scope" | "report";
 
 function relativeTime(value: string) {
@@ -31,12 +33,16 @@ function relativeTime(value: string) {
 export function HiveConsole() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [agents, setAgents] = useState<AgentManifest[]>([]);
-  const [activeView, setActiveView] = useState<EvidenceView>("graph");
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState("");
+  const [activeView, setActiveView] = useState<EvidenceView>("topology");
   const [pageView, setPageView] = useState<PageView>("evaluation");
   const [selectedAgentId, setSelectedAgentId] = useState("ar_explorer");
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [spawnOpen, setSpawnOpen] = useState(false);
   const [engagementOpen, setEngagementOpen] = useState(false);
+  const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
+  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [orchestrating, setOrchestrating] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
@@ -47,13 +53,19 @@ export function HiveConsole() {
 
   const refresh = useCallback(async () => {
     try {
-      const [dashboardResponse, agentsResponse] = await Promise.all([
+      const [dashboardResponse, agentsResponse, projectsResponse] = await Promise.all([
         fetch(`${apiUrl}/api/dashboard`, { cache: "no-store" }),
         fetch(`${apiUrl}/api/agents`, { cache: "no-store" }),
+        fetch(`${apiUrl}/api/projects`, { cache: "no-store" }),
       ]);
-      if (!dashboardResponse.ok || !agentsResponse.ok) throw new Error("The orchestration API is unavailable.");
-      setDashboard(await dashboardResponse.json() as Dashboard);
+      if (!dashboardResponse.ok || !agentsResponse.ok || !projectsResponse.ok) throw new Error("The orchestration API is unavailable.");
+      const nextDashboard = await dashboardResponse.json() as Dashboard;
+      const projectPayload = await projectsResponse.json() as { activeProjectId: string; projects: ProjectSummary[] };
+      setDashboard(nextDashboard);
       setAgents((await agentsResponse.json() as { agents: AgentManifest[] }).agents);
+      setProjects(projectPayload.projects);
+      setActiveProjectId(projectPayload.activeProjectId);
+      setSelectedAgentId((current) => nextDashboard.agents.some((agent) => agent.id === current) ? current : nextDashboard.agents[0]?.id ?? "");
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load the evaluation.");
@@ -73,11 +85,21 @@ export function HiveConsole() {
   useEffect(() => {
     if (pageView !== "report") return;
     setReportLoading(true);
-    fetch(`${apiUrl}/api/reports/current`, { cache: "no-store" })
+    fetch(`${apiUrl}/api/reports/current?projectId=${encodeURIComponent(dashboard?.engagement.id ?? "")}`, { cache: "no-store" })
       .then(async (response) => { if (!response.ok) throw new Error("Unable to generate the report."); setReport(await response.json() as ReportData); })
       .catch((cause) => setStatusMessage(cause instanceof Error ? cause.message : "Unable to generate the report."))
       .finally(() => setReportLoading(false));
   }, [pageView, dashboard?.findings, dashboard?.artifacts]);
+
+  function selectGraphNode(node: GraphNode | null) {
+    if (!node) { setSelectedNode(null); return; }
+    const findingId = node.metadata.findingId;
+    if (typeof findingId === "string") {
+      const finding = dashboard?.findings.find((item) => item.id === findingId);
+      if (finding) { setSelectedFinding(finding); return; }
+    }
+    setSelectedNode(node);
+  }
 
   const selectedAgent = dashboard?.agents.find((agent) => agent.id === selectedAgentId) ?? null;
   const pendingApproval = dashboard?.approvals.find((approval) => approval.status === "pending") ?? null;
@@ -159,14 +181,14 @@ export function HiveConsole() {
   }
 
   async function addScopeRule(rule: { kind: "host" | "domain" | "cidr" | "url-prefix" | "repository"; value: string; action: "allow" | "deny" }) {
-    const response = await fetch(`${apiUrl}/api/scope/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rule) });
+    const response = await fetch(`${apiUrl}/api/scope/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...rule, projectId: dashboard?.engagement.id }) });
     if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to add the scope rule.");
     setStatusMessage("The scope rule was added.");
     await refresh();
   }
 
   async function removeScopeRule(ruleId: string) {
-    const response = await fetch(`${apiUrl}/api/scope/rules/${ruleId}`, { method: "DELETE" });
+    const response = await fetch(`${apiUrl}/api/scope/rules/${ruleId}?projectId=${encodeURIComponent(dashboard?.engagement.id ?? "")}`, { method: "DELETE" });
     if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to remove the scope rule.");
     setStatusMessage("The scope rule was removed.");
     await refresh();
@@ -177,9 +199,17 @@ export function HiveConsole() {
     const kind = input.target.startsWith("repository:") ? "repository" : "host";
     const response = await fetch(`${apiUrl}/api/engagements`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, scopeRules: [{ id: "scope_primary", kind, value: kind === "repository" ? input.target : normalized, action: "allow" }] }) });
     if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to create the engagement.");
-    setPageView("evaluation"); setActiveView("graph"); setSelectedAgentId(""); setSelectedNode(null);
-    setStatusMessage("The engagement was created. Run the orchestrator when you are ready.");
+    setPageView("evaluation"); setActiveView("topology"); setSelectedAgentId(""); setSelectedNode(null); setSelectedFinding(null);
+    setStatusMessage("The project was created. Run the orchestrator when you are ready.");
     await refresh();
+  }
+
+  async function switchProject(projectId: string) {
+    const response = await fetch(`${apiUrl}/api/projects/${encodeURIComponent(projectId)}/activate`, { method: "POST" });
+    if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to switch projects.");
+    setSelectedNode(null); setSelectedFinding(null); setSearchQuery(""); setPageView("evaluation"); setActiveView("topology");
+    await refresh();
+    setStatusMessage("Project switched.");
   }
 
   if (!dashboard) {
@@ -199,7 +229,7 @@ export function HiveConsole() {
       {statusMessage ? <div className="status-toast"><span>{statusMessage}</span><button aria-label="Dismiss message" onClick={() => setStatusMessage("")}><X size={16} aria-hidden="true" /></button></div> : null}
       <header className="topbar">
         <a className="brand" href="/" aria-label="HiveSwarm home"><HiveMark small /><span>HiveSwarm</span><small>alpha</small></a>
-        <div className="breadcrumbs" aria-label="Current engagement"><span>Engagements</span><span aria-hidden="true">/</span><strong>{dashboard.engagement.name}</strong></div>
+        <button className="breadcrumbs project-trigger" aria-label={`Switch project, current project ${dashboard.engagement.name}`} onClick={() => setProjectSwitcherOpen(true)}><span>Projects</span><span aria-hidden="true">/</span><strong>{dashboard.engagement.name}</strong><ChevronDown size={14} aria-hidden="true" /></button>
         <div className="topbar__actions">
           <span className="environment-switch"><span className="status__dot" aria-hidden="true" />Local workspace</span>
           <span className="avatar" aria-label="Signed in as Sma Das">SD</span>
@@ -207,8 +237,9 @@ export function HiveConsole() {
       </header>
 
       <aside className="sidebar" aria-label="Workspace navigation">
+        <button className="sidebar-project" onClick={() => setProjectSwitcherOpen(true)}><span className="sidebar-project__mark"><Hexagon size={16} aria-hidden="true" /></span><span><small>Current project</small><strong>{dashboard.engagement.name}</strong></span><ChevronDown size={14} aria-hidden="true" /></button>
         <nav className="primary-nav" aria-label="Primary">
-          <button className={`nav-item ${pageView === "evaluation" ? "is-active" : ""}`} aria-current={pageView === "evaluation" ? "page" : undefined} onClick={() => { setPageView("evaluation"); setActiveView("graph"); }}><LayoutDashboard size={17} strokeWidth={1.5} aria-hidden="true" />Evaluation</button>
+          <button className={`nav-item ${pageView === "evaluation" ? "is-active" : ""}`} aria-current={pageView === "evaluation" ? "page" : undefined} onClick={() => { setPageView("evaluation"); setActiveView("topology"); }}><LayoutDashboard size={17} strokeWidth={1.5} aria-hidden="true" />Evaluation</button>
           <button className={`nav-item ${pageView === "registry" ? "is-active" : ""}`} aria-current={pageView === "registry" ? "page" : undefined} onClick={() => setPageView("registry")}><Bot size={17} strokeWidth={1.5} aria-hidden="true" />Agent registry<span className="nav-count">{agents.length}</span></button>
           <button className={`nav-item ${pageView === "findings" ? "is-active" : ""}`} aria-current={pageView === "findings" ? "page" : undefined} onClick={() => { setPageView("findings"); setActiveView("findings"); }}><ShieldCheck size={17} strokeWidth={1.5} aria-hidden="true" />Findings<span className="nav-count nav-count--risk">{criticalCount}</span></button>
           <button className={`nav-item ${pageView === "scope" ? "is-active" : ""}`} aria-current={pageView === "scope" ? "page" : undefined} onClick={() => setPageView("scope")}><Target size={17} strokeWidth={1.5} aria-hidden="true" />Scope</button>
@@ -223,7 +254,7 @@ export function HiveConsole() {
           <button className="add-agent" onClick={() => setSpawnOpen(true)}><Plus size={16} strokeWidth={2} aria-hidden="true" />Start specialist</button>
         </section>
 
-        <div className="utility-nav"><button className="nav-item" onClick={() => setEngagementOpen(true)}><Plus size={17} strokeWidth={1.5} aria-hidden="true" />New engagement</button></div>
+        <div className="utility-nav"><button className="nav-item" onClick={() => setEngagementOpen(true)}><Plus size={17} strokeWidth={1.5} aria-hidden="true" />New project</button></div>
       </aside>
 
       <main className="workspace" id="main">
@@ -249,7 +280,9 @@ export function HiveConsole() {
         <section className="evidence-panel" aria-label="Evaluation evidence">
           <div className="evidence-toolbar">
             <div className="view-switch" aria-label="Evidence view">
-              <button aria-pressed={pageView === "evaluation" && activeView === "graph"} onClick={() => { setPageView("evaluation"); setActiveView("graph"); }}><Network size={15} strokeWidth={1.5} aria-hidden="true" />Graph</button>
+              <button aria-pressed={pageView === "evaluation" && activeView === "topology"} onClick={() => { setPageView("evaluation"); setActiveView("topology"); }}><Network size={15} strokeWidth={1.5} aria-hidden="true" />Topology</button>
+              <button aria-pressed={pageView === "evaluation" && activeView === "swarm"} onClick={() => { setPageView("evaluation"); setActiveView("swarm"); }}><GitFork size={15} strokeWidth={1.5} aria-hidden="true" />Swarm</button>
+              <button aria-pressed={pageView === "evaluation" && activeView === "scope"} onClick={() => { setPageView("evaluation"); setActiveView("scope"); }}><Waypoints size={15} strokeWidth={1.5} aria-hidden="true" />Scope map</button>
               <button aria-pressed={pageView === "findings" || activeView === "findings"} onClick={() => { setPageView("findings"); setActiveView("findings"); }}><FileSearch size={15} strokeWidth={1.5} aria-hidden="true" />Findings <span>{dashboard.findings.length}</span></button>
               <button aria-pressed={pageView === "evaluation" && activeView === "activity"} onClick={() => { setPageView("evaluation"); setActiveView("activity"); }}><Activity size={15} strokeWidth={1.5} aria-hidden="true" />Activity</button>
             </div>
@@ -258,19 +291,29 @@ export function HiveConsole() {
             </div>
           </div>
 
-          {pageView !== "findings" && activeView === "graph" ? (
+          {pageView !== "findings" && activeView === "topology" ? (
             <div className="graph-wrap">
-              <SecurityGraph nodes={visibleNodes} edges={visibleEdges} onSelect={setSelectedNode} />
+              <SecurityGraph nodes={visibleNodes} edges={visibleEdges} onSelect={selectGraphNode} />
               <div className="graph-legend" aria-label="Graph legend"><span><i className="legend-dot legend-dot--target" />Asset</span><span><i className="legend-dot legend-dot--finding" />Finding</span><span><i className="legend-dot legend-dot--scope" />Scope review</span></div>
+            </div>
+          ) : pageView !== "findings" && activeView === "swarm" ? (
+            <div className="graph-wrap">
+              <SwarmGraph agents={dashboard.agents} findings={visibleFindings} onSelectAgent={(agentRunId) => { setSelectedAgentId(agentRunId); setSelectedNode(null); }} onSelectFinding={setSelectedFinding} />
+              <div className="graph-legend" aria-label="Swarm legend"><span><i className="legend-dot legend-dot--active" />Running</span><span><i className="legend-dot legend-dot--scope" />Waiting</span><span><i className="legend-dot legend-dot--finding" />Failed or finding</span></div>
+            </div>
+          ) : pageView !== "findings" && activeView === "scope" ? (
+            <div className="graph-wrap">
+              <ScopeGraph dashboard={dashboard} onSelect={setSelectedNode} />
+              <div className="graph-legend" aria-label="Scope legend"><span><i className="legend-dot legend-dot--active" />Allowed</span><span><i className="legend-dot legend-dot--finding" />Denied</span><span><i className="legend-dot legend-dot--scope" />Needs review</span></div>
             </div>
           ) : pageView === "findings" || activeView === "findings" ? (
             <div className="finding-table" id="findings">
               <div className="finding-table__head"><span>Finding</span><span>Asset</span><span>Confidence</span><span>Status</span></div>
               {visibleFindings.map((finding) => (
-                <article className="finding-row" key={finding.id}>
+                <button className="finding-row" key={finding.id} onClick={() => setSelectedFinding(finding)}>
                   <div><SeverityBadge severity={finding.severity} /><strong>{finding.title}</strong><p>{finding.summary}</p></div>
                   <bdi>{finding.assetLabel}</bdi><span className="numeric">{Math.round(finding.confidence * 100)}%</span><span>{finding.status}</span>
-                </article>
+                </button>
               ))}
             </div>
           ) : (
@@ -285,9 +328,9 @@ export function HiveConsole() {
         </> : pageView === "registry" ? (
           <RegistryView agents={agents} onInstall={installManifest} />
         ) : pageView === "scope" ? (
-          <ScopeView rules={dashboard.engagement.scopeRules} onAdd={addScopeRule} onRemove={removeScopeRule} />
+          <ScopeView dashboard={dashboard} onAdd={addScopeRule} onRemove={removeScopeRule} onInspect={setSelectedNode} />
         ) : (
-          <ReportView report={report} loading={reportLoading} apiUrl={apiUrl} />
+          <ReportView report={report} loading={reportLoading} apiUrl={apiUrl} projectId={dashboard.engagement.id} />
         )}
       </main>
 
@@ -319,7 +362,7 @@ export function HiveConsole() {
         <section className="inspector-section" aria-labelledby="recent-title">
           <div className="section-label"><h2 id="recent-title">Priority findings</h2><button onClick={() => { setPageView("findings"); setActiveView("findings"); }}>View all findings</button></div>
           <div className="priority-list">
-            {sortedFindings.slice(0, 3).map((finding) => <article key={finding.id}><SeverityBadge severity={finding.severity} /><strong>{finding.title}</strong><p><bdi>{finding.assetLabel}</bdi> · {relativeTime(finding.createdAt)}</p></article>)}
+            {sortedFindings.slice(0, 3).map((finding) => <button key={finding.id} onClick={() => setSelectedFinding(finding)}><SeverityBadge severity={finding.severity} /><strong>{finding.title}</strong><p><bdi>{finding.assetLabel}</bdi> · {relativeTime(finding.createdAt)}</p></button>)}
           </div>
         </section>
 
@@ -328,6 +371,8 @@ export function HiveConsole() {
 
       <SpawnDialog open={spawnOpen} agents={agents} parentAgents={dashboard.agents} target={dashboard.engagement.target} onClose={() => setSpawnOpen(false)} onSpawn={spawn} />
       <EngagementDialog open={engagementOpen} onClose={() => setEngagementOpen(false)} onCreate={createEngagement} />
+      <ProjectSwitcher open={projectSwitcherOpen} projects={projects} activeProjectId={activeProjectId} onClose={() => setProjectSwitcherOpen(false)} onSelect={switchProject} onNew={() => setEngagementOpen(true)} />
+      <FindingDrawer finding={selectedFinding} dashboard={dashboard} onClose={() => setSelectedFinding(null)} />
     </div>
   );
 }

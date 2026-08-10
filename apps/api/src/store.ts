@@ -1,14 +1,6 @@
-import type { AgentManifest, Dashboard } from "@hiveswarm/contracts";
+import type { AgentManifest, Dashboard, ProjectSummary } from "@hiveswarm/contracts";
 import { Pool } from "pg";
 import { createDemoDashboard } from "./seed.js";
-
-function normalizeDashboard(dashboard: Dashboard): Dashboard {
-  return {
-    ...dashboard,
-    artifacts: dashboard.artifacts ?? [],
-    approvals: dashboard.approvals.map((approval) => ({ ...approval, context: approval.context ?? {} })),
-  };
-}
 
 export type AuditEvent = {
   id: string;
@@ -19,9 +11,35 @@ export type AuditEvent = {
   createdAt: string;
 };
 
+function normalizeDashboard(dashboard: Dashboard): Dashboard {
+  return {
+    ...dashboard,
+    artifacts: dashboard.artifacts ?? [],
+    approvals: dashboard.approvals.map((approval) => ({ ...approval, context: approval.context ?? {} })),
+  };
+}
+
+function summary(dashboard: Dashboard): ProjectSummary {
+  return {
+    id: dashboard.engagement.id,
+    name: dashboard.engagement.name,
+    target: dashboard.engagement.target,
+    status: dashboard.engagement.status,
+    startedAt: dashboard.engagement.startedAt,
+    metrics: dashboard.metrics,
+    agentCount: dashboard.agents.length,
+  };
+}
+
 export interface StateStore {
   initialize(): Promise<void>;
-  getDashboard(): Promise<Dashboard>;
+  getDashboard(projectId?: string): Promise<Dashboard>;
+  getDashboardForRun(runId: string): Promise<Dashboard>;
+  getDashboardForAgent(agentRunId: string): Promise<Dashboard>;
+  getDashboardForApproval(approvalId: string): Promise<Dashboard>;
+  listProjects(): Promise<ProjectSummary[]>;
+  getActiveProjectId(): Promise<string>;
+  setActiveProject(projectId: string): Promise<void>;
   saveDashboard(dashboard: Dashboard): Promise<void>;
   listManifests(): Promise<AgentManifest[]>;
   upsertManifest(manifest: AgentManifest): Promise<void>;
@@ -30,13 +48,55 @@ export interface StateStore {
 }
 
 export class MemoryStore implements StateStore {
-  private dashboard = createDemoDashboard();
+  private readonly dashboards = new Map<string, Dashboard>();
+  private activeProjectId: string;
   private readonly manifests = new Map<string, AgentManifest>();
   readonly audit: AuditEvent[] = [];
 
+  constructor() {
+    const demo = createDemoDashboard();
+    this.dashboards.set(demo.engagement.id, demo);
+    this.activeProjectId = demo.engagement.id;
+  }
+
   async initialize() {}
-  async getDashboard() { return structuredClone(normalizeDashboard(this.dashboard)); }
-  async saveDashboard(dashboard: Dashboard) { this.dashboard = structuredClone(dashboard); }
+
+  async getDashboard(projectId = this.activeProjectId) {
+    const dashboard = this.dashboards.get(projectId);
+    if (!dashboard) throw new Error("Project not found.");
+    return structuredClone(normalizeDashboard(dashboard));
+  }
+
+  async getDashboardForRun(runId: string) {
+    const dashboard = [...this.dashboards.values()].find((item) => item.agents.some((agent) => agent.runId === runId));
+    if (!dashboard) throw new Error("Run not found.");
+    return structuredClone(normalizeDashboard(dashboard));
+  }
+
+  async getDashboardForAgent(agentRunId: string) {
+    const dashboard = [...this.dashboards.values()].find((item) => item.agents.some((agent) => agent.id === agentRunId));
+    if (!dashboard) throw new Error("Agent execution not found.");
+    return structuredClone(normalizeDashboard(dashboard));
+  }
+
+  async getDashboardForApproval(approvalId: string) {
+    const dashboard = [...this.dashboards.values()].find((item) => item.approvals.some((approval) => approval.id === approvalId));
+    if (!dashboard) throw new Error("Approval not found.");
+    return structuredClone(normalizeDashboard(dashboard));
+  }
+
+  async listProjects() {
+    return [...this.dashboards.values()].map((item) => summary(normalizeDashboard(item))).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  }
+
+  async getActiveProjectId() { return this.activeProjectId; }
+
+  async setActiveProject(projectId: string) {
+    if (!this.dashboards.has(projectId)) throw new Error("Project not found.");
+    this.activeProjectId = projectId;
+  }
+
+  async saveDashboard(dashboard: Dashboard) { this.dashboards.set(dashboard.engagement.id, structuredClone(normalizeDashboard(dashboard))); }
   async listManifests() { return [...this.manifests.values()].map((item) => structuredClone(item)); }
   async upsertManifest(manifest: AgentManifest) { this.manifests.set(`${manifest.id}@${manifest.version}`, structuredClone(manifest)); }
   async appendAudit(event: AuditEvent) { this.audit.push(structuredClone(event)); }
@@ -74,27 +134,77 @@ export class PostgresStore implements StateStore {
         created_at timestamptz NOT NULL
       );
     `);
-    const current = await this.pool.query("SELECT 1 FROM state_snapshots WHERE id = 'dashboard'");
-    if (current.rowCount === 0) await this.saveDashboard(createDemoDashboard());
+    const projects = await this.pool.query<{ payload: Dashboard }>("SELECT payload FROM state_snapshots WHERE id LIKE 'dashboard:%' ORDER BY updated_at DESC");
+    if (!projects.rowCount) {
+      const legacy = await this.pool.query<{ payload: Dashboard }>("SELECT payload FROM state_snapshots WHERE id = 'dashboard'");
+      await this.saveDashboard(normalizeDashboard(legacy.rows[0]?.payload ?? createDemoDashboard()));
+    }
+    const active = await this.pool.query("SELECT 1 FROM state_snapshots WHERE id = 'workspace'");
+    if (!active.rowCount) {
+      const first = (await this.listProjects())[0];
+      if (!first) throw new Error("Unable to initialize the project workspace.");
+      await this.pool.query("INSERT INTO state_snapshots (id, payload) VALUES ('workspace', $1::jsonb)", [JSON.stringify({ activeProjectId: first.id })]);
+    }
   }
 
-  async getDashboard() {
-    const result = await this.pool.query<{ payload: Dashboard }>("SELECT payload FROM state_snapshots WHERE id = 'dashboard'");
-    return normalizeDashboard(result.rows[0]?.payload ?? createDemoDashboard());
+  private async allDashboards() {
+    const result = await this.pool.query<{ payload: Dashboard }>("SELECT payload FROM state_snapshots WHERE id LIKE 'dashboard:%' ORDER BY updated_at DESC");
+    return result.rows.map((row) => normalizeDashboard(row.payload));
+  }
+
+  async getActiveProjectId() {
+    const result = await this.pool.query<{ active_project_id: string }>("SELECT payload->>'activeProjectId' AS active_project_id FROM state_snapshots WHERE id = 'workspace'");
+    const projectId = result.rows[0]?.active_project_id;
+    if (!projectId) throw new Error("No active project is configured.");
+    return projectId;
+  }
+
+  async getDashboard(projectId?: string) {
+    const resolvedId = projectId ?? await this.getActiveProjectId();
+    const result = await this.pool.query<{ payload: Dashboard }>("SELECT payload FROM state_snapshots WHERE id = $1", [`dashboard:${resolvedId}`]);
+    if (!result.rows[0]) throw new Error("Project not found.");
+    return normalizeDashboard(result.rows[0].payload);
+  }
+
+  async getDashboardForRun(runId: string) {
+    const dashboard = (await this.allDashboards()).find((item) => item.agents.some((agent) => agent.runId === runId));
+    if (!dashboard) throw new Error("Run not found.");
+    return dashboard;
+  }
+
+  async getDashboardForAgent(agentRunId: string) {
+    const dashboard = (await this.allDashboards()).find((item) => item.agents.some((agent) => agent.id === agentRunId));
+    if (!dashboard) throw new Error("Agent execution not found.");
+    return dashboard;
+  }
+
+  async getDashboardForApproval(approvalId: string) {
+    const dashboard = (await this.allDashboards()).find((item) => item.approvals.some((approval) => approval.id === approvalId));
+    if (!dashboard) throw new Error("Approval not found.");
+    return dashboard;
+  }
+
+  async listProjects() { return (await this.allDashboards()).map(summary).sort((a, b) => b.startedAt.localeCompare(a.startedAt)); }
+
+  async setActiveProject(projectId: string) {
+    await this.getDashboard(projectId);
+    await this.pool.query(
+      `INSERT INTO state_snapshots (id, payload) VALUES ('workspace', $1::jsonb)
+       ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`,
+      [JSON.stringify({ activeProjectId: projectId })],
+    );
   }
 
   async saveDashboard(dashboard: Dashboard) {
     await this.pool.query(
-      `INSERT INTO state_snapshots (id, payload) VALUES ('dashboard', $1::jsonb)
+      `INSERT INTO state_snapshots (id, payload) VALUES ($1, $2::jsonb)
        ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`,
-      [JSON.stringify(dashboard)],
+      [`dashboard:${dashboard.engagement.id}`, JSON.stringify(normalizeDashboard(dashboard))],
     );
   }
 
   async listManifests() {
-    const result = await this.pool.query<{ manifest: AgentManifest }>(
-      "SELECT manifest FROM agent_packages ORDER BY agent_id, version DESC",
-    );
+    const result = await this.pool.query<{ manifest: AgentManifest }>("SELECT manifest FROM agent_packages ORDER BY agent_id, version DESC");
     return result.rows.map((row) => row.manifest);
   }
 

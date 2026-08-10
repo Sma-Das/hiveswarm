@@ -170,7 +170,7 @@ export function createDemoDashboard(): Dashboard {
         { id: "node_invite", kind: "endpoint", label: "/api/invitations/accept", subtitle: "POST · authorization path", severity: "high", status: "finding", metadata: {}, discoveredBy: "Source review", createdAt: minutesAgo(6) },
         { id: "node_repo", kind: "repository", label: "northstar/web", subtitle: "main · 8f31c2a", status: "reviewing", metadata: {}, discoveredBy: "Orchestrator", createdAt: minutesAgo(10) },
         { id: "node_admin", kind: "subdomain", label: "admin.northstar.test", subtitle: "Outside current scope", status: "scope-review", metadata: {}, discoveredBy: "Explorer", createdAt: minutesAgo(5) },
-        { id: "node_finding", kind: "finding", label: "Stale invitation token", subtitle: "High severity", severity: "high", status: "confirmed", metadata: {}, discoveredBy: "Source review", createdAt: minutesAgo(5) },
+        { id: "node_finding", kind: "finding", label: "Stale invitation token", subtitle: "High severity", severity: "high", status: "confirmed", metadata: { findingId: "finding_1" }, discoveredBy: "Source review", createdAt: minutesAgo(5) },
       ],
       edges: [
         { id: "edge_1", source: "node_app", target: "node_443", relationship: "exposes", metadata: {} },
