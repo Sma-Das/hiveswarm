@@ -1,6 +1,7 @@
 "use client";
 
 import type { AgentManifest, Dashboard, Finding, GraphNode, ProjectSummary, SpawnAgentRequest } from "@hiveswarm/contracts";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   Activity, Bot, Boxes, ChevronDown, CircleDotDashed, Command, FileSearch, FileText,
   GitFork, Hexagon, LayoutDashboard, Network, Play, Plus, Search, ShieldCheck, Target, Waypoints, X,
@@ -236,6 +237,12 @@ export function HiveConsole() {
         </div>
       </header>
 
+      <ResizablePanelGroup
+        className="app-panes"
+        orientation="horizontal"
+        resizeTargetMinimumSize={{ fine: 12, coarse: 36 }}
+      >
+      <ResizablePanel id="navigation" defaultSize="15rem" minSize="11rem" maxSize="24rem">
       <aside className="sidebar" aria-label="Workspace navigation">
         <button className="sidebar-project" onClick={() => setProjectSwitcherOpen(true)}><span className="sidebar-project__mark"><Hexagon size={16} aria-hidden="true" /></span><span><small>Current project</small><strong>{dashboard.engagement.name}</strong></span><ChevronDown size={14} aria-hidden="true" /></button>
         <nav className="primary-nav" aria-label="Primary">
@@ -256,7 +263,11 @@ export function HiveConsole() {
 
         <div className="utility-nav"><button className="nav-item" onClick={() => setEngagementOpen(true)}><Plus size={17} strokeWidth={1.5} aria-hidden="true" />New project</button></div>
       </aside>
+      </ResizablePanel>
 
+      <ResizableHandle withHandle aria-label="Resize navigation pane" />
+
+      <ResizablePanel id="workspace" minSize="26rem">
       <main className="workspace" id="main">
         {pageView === "evaluation" || pageView === "findings" ? <>
         <section className="workspace-header" aria-labelledby="page-title">
@@ -333,7 +344,11 @@ export function HiveConsole() {
           <ReportView report={report} loading={reportLoading} apiUrl={apiUrl} projectId={dashboard.engagement.id} />
         )}
       </main>
+      </ResizablePanel>
 
+      <ResizableHandle withHandle aria-label="Resize details pane" />
+
+      <ResizablePanel className="inspector-pane" id="details" defaultSize="20.5rem" minSize="15rem" maxSize="30rem">
       <aside className="inspector" aria-label="Evaluation details">
         {pendingApproval ? <ApprovalCard approval={pendingApproval} busy={decisionBusy} onDecision={(decision) => void decide(decision)} /> : null}
 
@@ -368,6 +383,8 @@ export function HiveConsole() {
 
         {pendingApproval ? <section className="inspector-section" id="approval-detail" aria-labelledby="approval-detail-title"><div className="section-label"><h2 id="approval-detail-title">Requested action</h2></div><p className="detail-copy">{pendingApproval.requestedAction}</p><p className="detail-meta">Requested by {pendingApproval.requestedBy} · {relativeTime(pendingApproval.createdAt)}</p></section> : null}
       </aside>
+      </ResizablePanel>
+      </ResizablePanelGroup>
 
       <SpawnDialog open={spawnOpen} agents={agents} parentAgents={dashboard.agents} target={dashboard.engagement.target} onClose={() => setSpawnOpen(false)} onSpawn={spawn} />
       <EngagementDialog open={engagementOpen} onClose={() => setEngagementOpen(false)} onCreate={createEngagement} />
