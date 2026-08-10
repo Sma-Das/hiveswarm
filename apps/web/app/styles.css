@@ -152,6 +152,8 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
 .search-control:focus-within { border-color: var(--focus-ring); box-shadow: 0 0 0 1px var(--focus-ring); }
 .search-control input { width: 9rem; color: var(--text-primary); background: transparent; border: 0; outline: 0; font-size: var(--text-caption); }
 .search-control input::placeholder { color: var(--text-tertiary); }
+.search-control__clear { width: 1.75rem; height: 1.75rem; display: grid; flex: 0 0 auto; place-items: center; padding: 0; color: var(--text-secondary); background: transparent; border: 0; border-radius: 0.35rem; cursor: pointer; }
+.search-control__clear:hover { color: var(--text-primary); background: var(--surface-hover); }
 .icon-button--toolbar { width: 2.25rem; height: 2.25rem; background: var(--surface-canvas); box-shadow: var(--shadow-panel); }
 .graph-wrap { position: relative; min-height: 24rem; flex: 1; }
 .graph { position: absolute; inset: 0; background: radial-gradient(circle at 50% 40%, oklch(0.2 0.015 255 / 0.44), transparent 48%), var(--surface-canvas); }
@@ -206,6 +208,9 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
 .finding-row__field > small { display: none; }
 .finding-row__field bdi { overflow-wrap: break-word; }
 .activity-feed { padding: 0.75rem 1rem; }
+.filtered-empty { min-height: 18rem; display: grid; place-content: center; justify-items: center; gap: 0.5rem; padding: 2rem; color: var(--text-tertiary); text-align: center; }
+.filtered-empty h2 { margin: 0.25rem 0 0; color: var(--text-primary); font-size: var(--text-heading); line-height: 1.25; text-wrap: balance; }
+.filtered-empty p { margin: 0 0 0.5rem; text-wrap: pretty; }
 .log-row { display: grid; grid-template-columns: 4.75rem 7.5rem minmax(0, 1fr); gap: 0.75rem; min-height: 2.5rem; align-items: start; padding-block: 0.55rem; border-block-end: 1px solid var(--separator); font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 0.72rem; }
 .log-row__time { color: var(--text-tertiary); }
 .log-row__agent { color: var(--info); }
@@ -367,6 +372,7 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
 .project-state--paused, .project-state--waiting_approval { color: var(--warning); }
 .project-state--failed, .project-state--terminated { color: var(--danger); }
 .empty-inline { padding: 2rem; color: var(--text-tertiary); text-align: center; }
+.empty-inline p { margin: 0 0 0.5rem; }
 
 .finding-drawer { width: min(48rem, 100%); height: 100dvh; max-height: none; margin: 0 0 0 auto; padding: 0; color: var(--text-primary); background: transparent; border: 0; overflow: visible; }
 .finding-drawer::backdrop { background: oklch(0.05 0.008 255 / 0.64); backdrop-filter: blur(3px); }

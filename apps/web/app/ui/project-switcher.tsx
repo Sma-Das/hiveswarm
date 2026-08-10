@@ -35,6 +35,7 @@ export function ProjectSwitcher({ open, projects, activeProjectId, onClose, onSe
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} aria-hidden="true" /></button>
         </div>
         <label className="project-search"><Search size={16} aria-hidden="true" /><span className="sr-only">Search projects</span><input ref={searchRef} type="search" aria-label="Search projects" placeholder="Search projects" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <div className="sr-only" role="status">{query.trim() ? `${visible.length} ${visible.length === 1 ? "project" : "projects"} match ${query.trim()}.` : ""}</div>
         <div className="project-list">
           {visible.map((project) => <button type="button" key={project.id} className={`project-row${project.id === activeProjectId ? " is-active" : ""}`} disabled={Boolean(busyId)} onClick={async () => {
             if (project.id === activeProjectId) { onClose(); return; }
@@ -46,7 +47,7 @@ export function ProjectSwitcher({ open, projects, activeProjectId, onClose, onSe
             <span className="project-row__copy"><strong>{project.name}</strong><small><bdi>{project.target}</bdi></small></span>
             <span className="project-row__meta"><small>{project.agentCount} agents · {project.metrics.findings} findings</small>{project.id === activeProjectId ? <Check size={16} aria-label="Current project" /> : <i className={`project-state project-state--${project.status}`}>{busyId === project.id ? "Opening" : project.status.replace("_", " ")}</i>}</span>
           </button>)}
-          {!visible.length ? <div className="empty-inline">No projects match that search.</div> : null}
+          {!visible.length ? <div className="empty-inline"><p>No projects match “{query.trim()}”.</p><button type="button" className="text-link" onClick={() => { setQuery(""); searchRef.current?.focus(); }}>Clear search</button></div> : null}
         </div>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         <div className="dialog__actions dialog__actions--between"><span>{projects.length} projects</span><button type="button" className="button button--primary" onClick={() => { onClose(); onNew(); }}><Plus size={16} aria-hidden="true" />New project</button></div>

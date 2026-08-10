@@ -39,6 +39,8 @@ export function ScopeView({ dashboard, onAdd, onRemove, onInspect }: {
             <span>{rule.action === "allow" ? <Check size={17} aria-hidden="true" /> : <Ban size={17} aria-hidden="true" />}</span>
             <div><strong>{rule.action === "allow" ? "Allow" : "Deny"} {rule.kind}</strong><bdi>{rule.value}</bdi></div>
             <button className="icon-button" aria-label={`Remove ${rule.action} rule for ${rule.value}`} onClick={async () => {
+              const consequence = rule.action === "allow" ? "Matching requests will be denied unless another allow rule applies." : "Matching requests may be allowed by another rule.";
+              if (!window.confirm(`Remove the ${rule.action} rule for ${rule.value}? ${consequence}`)) return;
               setError("");
               try { await onRemove(rule.id); } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to remove the scope rule."); }
             }}><Trash2 size={16} aria-hidden="true" /></button>
