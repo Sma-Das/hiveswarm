@@ -1,12 +1,12 @@
 "use client";
 
-import type { AgentManifest, Dashboard, Finding, GraphNode, ProjectSummary, SpawnAgentRequest } from "@hiveswarm/contracts";
+import type { Finding, GraphNode, SpawnAgentRequest } from "@hiveswarm/contracts";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   Activity, Bot, Boxes, ChevronDown, CircleDotDashed, Command, FileSearch, FileText,
   GitFork, Hexagon, LayoutDashboard, Network, Play, Plus, Search, SearchX, ShieldCheck, Target, Waypoints, X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AgentRow } from "./agent-row";
 import { ApprovalCard } from "./approval-card";
 import { HiveMark } from "./brand";
@@ -19,6 +19,7 @@ import { ReportView, type ReportData } from "./report-view";
 import { ScopeView } from "./scope-view";
 import { ProjectSwitcher } from "./project-switcher";
 import { FindingDrawer } from "./finding-drawer";
+import { useProjectWorkspace } from "./use-project-workspace";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 type EvidenceView = "topology" | "swarm" | "scope" | "findings" | "activity";
@@ -43,10 +44,7 @@ function FilteredEmpty({ query, noun, onClear }: { query: string; noun: string; 
 }
 
 export function HiveConsole() {
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [agents, setAgents] = useState<AgentManifest[]>([]);
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState("");
+  const { dashboard, agents, projects, activeProjectId, error, refresh, execute, loadReport } = useProjectWorkspace();
   const [activeView, setActiveView] = useState<EvidenceView>("topology");
   const [pageView, setPageView] = useState<PageView>("evaluation");
   const [selectedAgentId, setSelectedAgentId] = useState("ar_explorer");
@@ -61,47 +59,18 @@ export function HiveConsole() {
   const [reportLoading, setReportLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
-  const [error, setError] = useState("");
-
-  const refresh = useCallback(async () => {
-    try {
-      const [dashboardResponse, agentsResponse, projectsResponse] = await Promise.all([
-        fetch(`${apiUrl}/api/dashboard`, { cache: "no-store" }),
-        fetch(`${apiUrl}/api/agents`, { cache: "no-store" }),
-        fetch(`${apiUrl}/api/projects`, { cache: "no-store" }),
-      ]);
-      if (!dashboardResponse.ok || !agentsResponse.ok || !projectsResponse.ok) throw new Error("The orchestration API is unavailable.");
-      const nextDashboard = await dashboardResponse.json() as Dashboard;
-      const projectPayload = await projectsResponse.json() as { activeProjectId: string; projects: ProjectSummary[] };
-      setDashboard(nextDashboard);
-      setAgents((await agentsResponse.json() as { agents: AgentManifest[] }).agents);
-      setProjects(projectPayload.projects);
-      setActiveProjectId(projectPayload.activeProjectId);
-      setSelectedAgentId((current) => nextDashboard.agents.some((agent) => agent.id === current) ? current : nextDashboard.agents[0]?.id ?? "");
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to load the evaluation.");
-    }
-  }, []);
-
-  useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     if (!dashboard) return;
-    const runId = dashboard.agents[0]?.runId ?? dashboard.engagement.id;
-    const source = new EventSource(`${apiUrl}/api/runs/${runId}/events`);
-    source.onmessage = () => void refresh();
-    ["agent.started", "agent.queued", "agent.completed", "agent.failed", "agent.terminated", "approval.requested", "approval.approved", "approval.denied", "agent.log", "agent.node", "agent.edge", "agent.finding", "agent.artifact", "agent.scope_proposal", "run.paused", "run.running"]
-      .forEach((eventName) => source.addEventListener(eventName, () => void refresh()));
-    return () => source.close();
-  }, [dashboard?.engagement.id, refresh]);
+    setSelectedAgentId((current) => dashboard.agents.some((agent) => agent.id === current) ? current : dashboard.agents[0]?.id ?? "");
+  }, [dashboard]);
   useEffect(() => {
     if (pageView !== "report") return;
     setReportLoading(true);
-    fetch(`${apiUrl}/api/reports/current?projectId=${encodeURIComponent(dashboard?.engagement.id ?? "")}`, { cache: "no-store" })
-      .then(async (response) => { if (!response.ok) throw new Error("Unable to generate the report."); setReport(await response.json() as ReportData); })
+    loadReport(dashboard?.engagement.id ?? "")
+      .then((nextReport) => setReport(nextReport as ReportData))
       .catch((cause) => setStatusMessage(cause instanceof Error ? cause.message : "Unable to generate the report."))
       .finally(() => setReportLoading(false));
-  }, [pageView, dashboard?.findings, dashboard?.artifacts]);
+  }, [pageView, dashboard?.findings, dashboard?.artifacts, dashboard?.engagement.id, loadReport]);
 
   function selectGraphNode(node: GraphNode | null) {
     if (!node) { setSelectedNode(null); return; }
@@ -143,37 +112,28 @@ export function HiveConsole() {
     if (!pendingApproval) return;
     setDecisionBusy(true);
     try {
-      const response = await fetch(`${apiUrl}/api/approvals/${pendingApproval.id}/decision`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }),
-      });
-      if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to save the decision.");
-      setStatusMessage(decision === "approved" ? "Request approved for one use." : "Request denied.");
-      await refresh();
+      const result = await execute({ type: "decide", approvalId: pendingApproval.id, decision });
+      setStatusMessage(result.message);
     } catch (cause) { setStatusMessage(cause instanceof Error ? cause.message : "Unable to save the decision."); }
     finally { setDecisionBusy(false); }
   }
 
   async function spawn(request: SpawnAgentRequest) {
     const runId = dashboard?.agents[0]?.runId ?? dashboard?.engagement.id ?? "current";
-    const response = await fetch(`${apiUrl}/api/runs/${runId}/agents`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request),
-    });
-    const payload = await response.json() as { error?: string; approvalRequired?: boolean };
-    if (!response.ok) throw new Error(payload.error ?? "Unable to start the specialist.");
-    setStatusMessage(payload.approvalRequired ? "Specialist is waiting for approval." : "Specialist is starting.");
-    await refresh();
+    const result = await execute({ type: "spawn", runId, request });
+    setStatusMessage(result.message);
   }
 
   async function toggleRun() {
     if (!dashboard) return;
     const status = dashboard.engagement.status === "paused" ? "running" : "paused";
     const runId = dashboard.agents[0]?.runId ?? dashboard.engagement.id;
-    const response = await fetch(`${apiUrl}/api/runs/${runId}/state`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
-    });
-    if (!response.ok) { setStatusMessage("Unable to change the run state."); return; }
-    setStatusMessage(status === "paused" ? "Evaluation paused." : "Evaluation resumed.");
-    await refresh();
+    try {
+      const result = await execute({ type: "set-run-state", runId, status });
+      setStatusMessage(result.message);
+    } catch (cause) {
+      setStatusMessage(cause instanceof Error ? cause.message : "Unable to change the run state.");
+    }
   }
 
   async function runOrchestrator() {
@@ -181,59 +141,44 @@ export function HiveConsole() {
     setOrchestrating(true); setStatusMessage("");
     try {
       const runId = dashboard.agents[0]?.runId ?? dashboard.engagement.id;
-      const response = await fetch(`${apiUrl}/api/runs/${runId}/orchestrate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-      const payload = await response.json() as { error?: string; spawned?: unknown[] };
-      if (!response.ok) throw new Error(payload.error ?? "Unable to run the orchestrator.");
-      setStatusMessage(`Orchestrator started ${payload.spawned?.length ?? 0} specialists.`);
-      await refresh();
+      const result = await execute({ type: "orchestrate", runId });
+      setStatusMessage(result.message);
     } catch (cause) { setStatusMessage(cause instanceof Error ? cause.message : "Unable to run the orchestrator."); }
     finally { setOrchestrating(false); }
   }
 
   async function terminateAgent(agentRunId: string) {
-    const response = await fetch(`${apiUrl}/api/agent-runs/${agentRunId}/terminate`, { method: "POST" });
-    if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to terminate the agent.");
-    setStatusMessage("Agent terminated.");
-    await refresh();
+    const result = await execute({ type: "terminate-agent", agentRunId });
+    setStatusMessage(result.message);
   }
 
   async function installManifest(manifest: unknown) {
-    const response = await fetch(`${apiUrl}/api/agents/install`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(manifest) });
-    if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to install the manifest.");
-    setStatusMessage("Agent manifest installed.");
-    await refresh();
+    const result = await execute({ type: "install-manifest", manifest });
+    setStatusMessage(result.message);
   }
 
   async function addScopeRule(rule: { kind: "host" | "domain" | "cidr" | "url-prefix" | "repository"; value: string; action: "allow" | "deny" }) {
-    const response = await fetch(`${apiUrl}/api/scope/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...rule, projectId: dashboard?.engagement.id }) });
-    if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to add the scope rule.");
-    setStatusMessage("Scope rule added.");
-    await refresh();
+    if (!dashboard) return;
+    const result = await execute({ type: "add-scope-rule", projectId: dashboard.engagement.id, rule });
+    setStatusMessage(result.message);
   }
 
   async function removeScopeRule(ruleId: string) {
-    const response = await fetch(`${apiUrl}/api/scope/rules/${ruleId}?projectId=${encodeURIComponent(dashboard?.engagement.id ?? "")}`, { method: "DELETE" });
-    if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to remove the scope rule.");
-    setStatusMessage("Scope rule removed.");
-    await refresh();
+    if (!dashboard) return;
+    const result = await execute({ type: "remove-scope-rule", projectId: dashboard.engagement.id, ruleId });
+    setStatusMessage(result.message);
   }
 
   async function createEngagement(input: { name: string; target: string }) {
-    const normalized = input.target.includes("://") ? new URL(input.target).hostname : input.target;
-    const kind = input.target.startsWith("repository:") ? "repository" : "host";
-    const response = await fetch(`${apiUrl}/api/engagements`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, scopeRules: [{ id: "scope_primary", kind, value: kind === "repository" ? input.target : normalized, action: "allow" }] }) });
-    if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to create the engagement.");
+    const result = await execute({ type: "create-project", ...input });
     setPageView("evaluation"); setActiveView("topology"); setSelectedAgentId(""); setSelectedNode(null); setSelectedFinding(null);
-    setStatusMessage("Project created. Run the orchestrator when you’re ready.");
-    await refresh();
+    setStatusMessage(result.message);
   }
 
   async function switchProject(projectId: string) {
-    const response = await fetch(`${apiUrl}/api/projects/${encodeURIComponent(projectId)}/activate`, { method: "POST" });
-    if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to switch projects.");
+    const result = await execute({ type: "switch-project", projectId });
     setSelectedNode(null); setSelectedFinding(null); setSearchQuery(""); setPageView("evaluation"); setActiveView("topology");
-    await refresh();
-    setStatusMessage("Project switched.");
+    setStatusMessage(result.message);
   }
 
   if (!dashboard) {

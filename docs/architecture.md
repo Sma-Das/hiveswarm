@@ -30,6 +30,8 @@ Browser console ── HTTP + SSE ──> Orchestration API ── snapshot/audi
 
 Every agent execution carries its originating run ID. The API resolves run, agent, approval, and callback mutations to that project rather than relying on the console's active project. Scope writes and report reads also accept an explicit project ID. This keeps simultaneous or background evaluations isolated while retaining a lightweight active-project preference for the local console.
 
+The console keeps transport and synchronization in a project-keyed workspace module. Dashboard, registry, and project-list responses are schema validated at that seam; server-sent events refresh the project that owns the subscription; and a generation guard discards late responses after rapid project switches. Feature views read the resulting snapshot and send typed operator commands without constructing transport requests themselves. The existing polite status region continues to announce command results and errors.
+
 The materialized evidence model supports several connected projections instead of one overloaded graph:
 
 - topology connects servers, services, vhosts, applications, routes, repositories, identities, and findings;
