@@ -48,7 +48,7 @@ describe("OrchestratorService", () => {
     const dashboard = await store.getDashboard();
     dashboard.engagement.status = "paused";
     await store.saveDashboard(dashboard);
-    await expect(service.spawn({ agentId: manifest.id, lifecycle: "task", task: "Inspect the approved host safely", target: "app.northstar.test", requestedCapabilities: [], executionPlan: [] })).rejects.toThrow(/paused/i);
+    await expect(service.spawn({ agentId: manifest.id, lifecycle: "task", task: "Inspect the approved host safely", target: "app.northstar.test", requestedCapabilities: [], executionPlan: [] }, "run_demo")).rejects.toThrow(/paused/i);
   });
 
   it("turns explorer scope proposals into human-approved allow rules without restarting the explorer", async () => {
@@ -86,7 +86,7 @@ describe("OrchestratorService", () => {
         { label: "Resolve host", command: "getent hosts app.northstar.test", timeoutSeconds: 30 },
         { label: "Read robots", command: "curl -fsS --max-time 15 https://app.northstar.test/robots.txt", timeoutSeconds: 30 },
       ],
-    });
+    }, "run_demo");
     expect(result.approvalRequired).toBe(true);
     expect(executor.dispatched).not.toContain(result.agentRun.id);
     const dashboard = await store.getDashboard();
@@ -101,5 +101,24 @@ describe("OrchestratorService", () => {
       type: "finding",
       finding: { title: "Unapproved finding", severity: "low", status: "open", confidence: 0.5, assetLabel: "test", summary: "This event should be rejected.", evidence: [], discoveredBy: "Explorer" },
     })).rejects.toThrow(/finding\.write/i);
+  });
+
+  it("assigns finding provenance from the stored execution", async () => {
+    await service.ingest("ar_browser", {
+      type: "finding",
+      finding: {
+        title: "Locally attributed finding",
+        severity: "low",
+        status: "open",
+        confidence: 0.8,
+        assetLabel: "/login",
+        summary: "A bounded test finding.",
+        evidence: ["Observed in the test fixture"],
+        discoveredBy: "Untrusted display name",
+        agentRunId: "ar_source",
+      },
+    });
+    const finding = (await store.getDashboard()).findings.find((item) => item.title === "Locally attributed finding");
+    expect(finding?.agentRunId).toBe("ar_browser");
   });
 });

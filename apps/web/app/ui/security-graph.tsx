@@ -1,6 +1,14 @@
 "use client";
 
-import type { AgentRun, Dashboard, Finding, GraphEdge as HiveEdge, GraphNode as HiveNode } from "@hiveswarm/contracts";
+import {
+  findingEvidencePath,
+  projectSwarm,
+  type AgentRun,
+  type Dashboard,
+  type Finding,
+  type GraphEdge as HiveEdge,
+  type GraphNode as HiveNode,
+} from "@hiveswarm/contracts";
 import {
   Background,
   BackgroundVariant,
@@ -107,42 +115,13 @@ export function SecurityGraph({ nodes, edges, onSelect }: { nodes: HiveNode[]; e
   return <GraphCanvas nodes={nodes} edges={edges} mode="topology" ariaLabel="Infrastructure, application, and vulnerability topology" onSelect={onSelect} />;
 }
 
-function agentNode(agent: AgentRun): HiveNode {
-  return {
-    id: agent.id,
-    kind: "agent",
-    label: agent.agentName,
-    subtitle: `${agent.lifecycle} · depth ${agent.depth}`,
-    status: agent.status,
-    metadata: { agentRunId: agent.id, depth: agent.depth, lifecycle: agent.lifecycle },
-    discoveredBy: agent.parentAgentRunId ? "Parent agent" : "HiveSwarm",
-    createdAt: agent.startedAt ?? new Date().toISOString(),
-  };
-}
-
 export function SwarmGraph({ agents, findings, onSelectAgent, onSelectFinding }: {
   agents: AgentRun[];
   findings: Finding[];
   onSelectAgent: (agentRunId: string) => void;
   onSelectFinding: (finding: Finding) => void;
 }) {
-  const { nodes, edges } = useMemo(() => {
-    const nodes: HiveNode[] = agents.map(agentNode);
-    const edges: HiveEdge[] = agents.flatMap((agent) => agent.parentAgentRunId ? [{
-      id: `agent-edge-${agent.id}`,
-      source: agent.parentAgentRunId,
-      target: agent.id,
-      relationship: agent.depth === 1 ? "delegated" : "spawned",
-      metadata: { animated: ["running", "starting"].includes(agent.status), color: agent.status === "failed" ? "danger" : agent.status === "waiting_approval" ? "warning" : "default" },
-    }] : []);
-    for (const finding of findings) {
-      const owner = agents.find((agent) => agent.agentName.toLowerCase() === finding.discoveredBy.toLowerCase() || agent.agentId.toLowerCase() === finding.discoveredBy.toLowerCase()) ?? agents[0];
-      if (!owner) continue;
-      nodes.push({ id: `swarm-${finding.id}`, kind: "finding", label: finding.title, subtitle: `${finding.severity} · ${finding.assetLabel}`, severity: finding.severity, status: finding.status, metadata: { findingId: finding.id, depth: Math.min(5, owner.depth + 1) }, discoveredBy: finding.discoveredBy, createdAt: finding.createdAt });
-      edges.push({ id: `finding-edge-${finding.id}`, source: owner.id, target: `swarm-${finding.id}`, relationship: "raised", metadata: { color: finding.severity === "critical" || finding.severity === "high" ? "danger" : finding.severity === "medium" ? "warning" : "default" } });
-    }
-    return { nodes, edges };
-  }, [agents, findings]);
+  const { nodes, edges } = useMemo(() => projectSwarm(agents, findings), [agents, findings]);
   return <GraphCanvas nodes={nodes} edges={edges} mode="swarm" ariaLabel="Orchestrator, recursive subagents, statuses, and raised findings" onSelect={(node) => {
     if (!node) return;
     const findingId = node.metadata.findingId;
@@ -176,21 +155,6 @@ export function ScopeGraph({ dashboard, onSelect }: { dashboard: Dashboard; onSe
 }
 
 export function FindingPathGraph({ dashboard, finding, onSelect }: { dashboard: Dashboard; finding: Finding; onSelect: (node: HiveNode | null) => void }) {
-  const { nodes, edges } = useMemo(() => {
-    const targets = dashboard.graph.nodes.filter((node) => node.metadata.findingId === finding.id);
-    if (!targets.length) {
-      const asset: HiveNode = { id: `finding-asset-${finding.id}`, kind: "endpoint", label: finding.assetLabel, subtitle: "Affected asset", status: "observed", metadata: {}, discoveredBy: finding.discoveredBy, createdAt: finding.createdAt };
-      const findingNode: HiveNode = { id: `finding-detail-${finding.id}`, kind: "finding", label: finding.title, subtitle: finding.severity, status: finding.status, severity: finding.severity, metadata: { findingId: finding.id }, discoveredBy: finding.discoveredBy, createdAt: finding.createdAt };
-      return { nodes: [asset, findingNode], edges: [{ id: `finding-detail-edge-${finding.id}`, source: asset.id, target: findingNode.id, relationship: "affected_by", metadata: { color: finding.severity === "critical" || finding.severity === "high" ? "danger" : "warning" } }] };
-    }
-    const included = new Set(targets.map((node) => node.id));
-    let frontier = [...included];
-    for (let depth = 0; depth < 8 && frontier.length; depth += 1) {
-      const next: string[] = [];
-      for (const edge of dashboard.graph.edges) if (frontier.includes(edge.target) && !included.has(edge.source)) { included.add(edge.source); next.push(edge.source); }
-      frontier = next;
-    }
-    return { nodes: dashboard.graph.nodes.filter((node) => included.has(node.id)), edges: dashboard.graph.edges.filter((edge) => included.has(edge.source) && included.has(edge.target)) };
-  }, [dashboard, finding]);
+  const { nodes, edges } = useMemo(() => findingEvidencePath(dashboard, finding), [dashboard, finding]);
   return <GraphCanvas nodes={nodes} edges={edges} mode="finding" compact ariaLabel={`Evidence chain for ${finding.title}`} onSelect={onSelect} />;
 }

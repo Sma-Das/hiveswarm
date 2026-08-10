@@ -11,6 +11,8 @@ An agent package is a validated manifest plus an operator-trusted container imag
 - `image` and `command` define the replaceable runtime.
 - `configuration` allowlists the only package-specific environment values the worker may inject. Secret values never belong in the manifest.
 
+Container resources, writable mounts, temporary filesystems, and package-specific environment are compiled from worker-owned reviewed profiles. A manifest can declare supported capabilities and configuration, but it cannot grant itself a host mount, a larger resource profile, or additional environment. Generic specialists receive the constrained baseline; exceptional profiles such as Burp and the governed freeform package remain explicit worker decisions with focused plan tests.
+
 ```sh
 curl -X POST http://localhost:4100/api/agents/install \
   -H 'content-type: application/json' \

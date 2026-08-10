@@ -30,6 +30,8 @@ Browser console ── HTTP + SSE ──> Orchestration API ── snapshot/audi
 
 Every agent execution carries its originating run ID. The API resolves run, agent, approval, and callback mutations to that project rather than relying on the console's active project. Scope writes and report reads also accept an explicit project ID. This keeps simultaneous or background evaluations isolated while retaining a lightweight active-project preference for the local console.
 
+The console keeps transport and synchronization in a project-keyed workspace module. Dashboard, registry, and project-list responses are schema validated at that seam; server-sent events refresh the project that owns the subscription; and a generation guard discards late responses after rapid project switches. Feature views read the resulting snapshot and send typed operator commands without constructing transport requests themselves. The existing polite status region continues to announce command results and errors.
+
 The materialized evidence model supports several connected projections instead of one overloaded graph:
 
 - topology connects servers, services, vhosts, applications, routes, repositories, identities, and findings;
@@ -37,7 +39,7 @@ The materialized evidence model supports several connected projections instead o
 - scope connects allow/deny rules and explorer proposals awaiting human review;
 - finding paths walk backward through supporting evidence and open in a side drawer with the underlying structured node data.
 
-These are views over the same typed nodes, edges, executions, and finding records, so selecting a finding can move from execution provenance to its application attack path without duplicating evidence.
+These are views over the same typed nodes, edges, executions, and finding records. Finding provenance is assigned from the authenticated agent run during ingestion, never reconstructed from a specialist-supplied display name. A shared pure evidence module derives swarm ownership, finding paths, and report attack paths from those relationships, so selecting a finding can move from exact execution provenance to its application attack path without duplicating evidence.
 
 ## Agent tree and lifecycle
 
@@ -58,8 +60,8 @@ The included API has no end-user authentication and is intended for a trusted lo
 
 ## Persistence and concurrency
 
-The current implementation stores one materialized dashboard per project in transactional PostgreSQL JSONB snapshots, with a small workspace record for the active project and agent versions/audit events in separate tables. Legacy single-dashboard data is migrated non-destructively on startup. API-process mutations are serialized to avoid callback races. This is sufficient for the vertical slice; horizontally scaled APIs should replace it with row-level transactions or an event-sourced reducer.
+The current implementation stores one materialized dashboard per project in transactional PostgreSQL JSONB snapshots, with a small workspace record for the active project and agent versions/audit events in separate tables. Legacy single-dashboard data is migrated non-destructively on startup. Every mutation resolves an explicit project, run, agent run, or approval owner before changing state. The memory adapter serializes these mutations and the PostgreSQL adapter locks the owning project row for the transaction, so background execution cannot follow the console's active-project preference and concurrent callbacks do not overwrite each other inside one API process. Audit rows and published events still follow the snapshot commit rather than sharing a durable outbox; horizontally scaled APIs need an outbox or event-sourced reducer for atomic delivery.
 
 ## Extensibility
 
-`ModelProvider`, `StateStore`, `ExecutionDriver`, and the manifest/event schemas are explicit boundaries. The first model adapter uses OpenAI Responses function calls with strict tool schemas, `store: false`, and an engagement-scoped safety identifier. Adding another provider requires translating its tool calls at the provider boundary; policy and execution stay unchanged.
+`ModelProvider`, `StateStore`, `ExecutionDriver`, and the manifest/event schemas are explicit boundaries. `ModelProvider` exposes planning and bounded orchestration in domain terms; the OpenAI adapter owns strict tool schemas, multi-turn response items, call IDs, `store: false`, and the engagement-scoped safety identifier. Adding another provider requires translating its wire behavior into the same typed spawn proposals at that seam. Every proposal still passes through local policy and execution unchanged.

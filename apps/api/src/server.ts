@@ -20,7 +20,7 @@ import { id } from "./id.js";
 import { OrchestratorService } from "./orchestrator.js";
 import { OrchestrationLoop } from "./orchestration-loop.js";
 import { OpenAiResponsesProvider } from "./model-provider.js";
-import { DeterministicPlanner, OpenAiPlanner } from "./planner.js";
+import { DeterministicPlanner } from "./planner.js";
 import { AgentRegistry } from "./registry.js";
 import { generateReport, reportAsMarkdown } from "./report.js";
 import { MemoryStore, PostgresStore } from "./store.js";
@@ -48,9 +48,7 @@ const executor: ExecutionDriver = config.executionDriver === "queue"
 const orchestrator = new OrchestratorService(store, registry, executor, events);
 const fallbackPlanner = new DeterministicPlanner();
 const modelProvider = config.openAiApiKey ? new OpenAiResponsesProvider(config.openAiApiKey, config.openAiModel) : undefined;
-const planner = modelProvider
-  ? new OpenAiPlanner(modelProvider)
-  : fallbackPlanner;
+const planner = modelProvider ?? fallbackPlanner;
 const orchestrationLoop = new OrchestrationLoop(
   store,
   registry,
@@ -116,24 +114,26 @@ app.post("/api/agents/install", async (request, reply) => {
   return reply.status(201).send({ manifest });
 });
 app.post("/api/scope/rules", async (request, reply) => {
-  const input = z.object({ projectId: z.string().optional(), kind: z.enum(["host", "domain", "cidr", "url-prefix", "repository"]), value: z.string().min(1).max(2048), action: z.enum(["allow", "deny"]) }).parse(request.body);
-  const dashboard = await store.getDashboard(input.projectId);
-  if (dashboard.engagement.scopeRules.some((rule) => rule.kind === input.kind && rule.value === input.value && rule.action === input.action)) throw new Error("An identical scope rule already exists.");
-  const rule = { id: id("scope"), kind: input.kind, value: input.value, action: input.action };
-  dashboard.engagement.scopeRules.push(rule);
-  await store.saveDashboard(dashboard);
+  const input = z.object({ projectId: z.string(), kind: z.enum(["host", "domain", "cidr", "url-prefix", "repository"]), value: z.string().min(1).max(2048), action: z.enum(["allow", "deny"]) }).parse(request.body);
+  const rule = await store.mutateDashboard({ kind: "project", id: input.projectId }, (dashboard) => {
+    if (dashboard.engagement.scopeRules.some((current) => current.kind === input.kind && current.value === input.value && current.action === input.action)) throw new Error("An identical scope rule already exists.");
+    const current = { id: id("scope"), kind: input.kind, value: input.value, action: input.action };
+    dashboard.engagement.scopeRules.push(current);
+    return current;
+  });
   await store.appendAudit({ id: id("audit"), actor: "human", action: "scope.rule.added", resource: rule.id, detail: rule, createdAt: new Date().toISOString() });
   return reply.status(201).send({ rule });
 });
 app.delete("/api/scope/rules/:ruleId", async (request, reply) => {
   const { ruleId } = request.params as { ruleId: string };
-  const { projectId } = z.object({ projectId: z.string().optional() }).parse(request.query ?? {});
-  const dashboard = await store.getDashboard(projectId);
-  const rule = dashboard.engagement.scopeRules.find((item) => item.id === ruleId);
-  if (!rule) return reply.status(404).send({ error: "Scope rule not found." });
-  if (rule.action === "allow" && dashboard.engagement.scopeRules.filter((item) => item.action === "allow").length === 1) return reply.status(422).send({ error: "Keep at least one allow rule before removing this boundary." });
-  dashboard.engagement.scopeRules = dashboard.engagement.scopeRules.filter((item) => item.id !== ruleId);
-  await store.saveDashboard(dashboard);
+  const { projectId } = z.object({ projectId: z.string() }).parse(request.query ?? {});
+  const rule = await store.mutateDashboard({ kind: "project", id: projectId }, (dashboard) => {
+    const current = dashboard.engagement.scopeRules.find((item) => item.id === ruleId);
+    if (!current) throw new Error("Scope rule not found.");
+    if (current.action === "allow" && dashboard.engagement.scopeRules.filter((item) => item.action === "allow").length === 1) throw new Error("Keep at least one allow rule before removing this boundary.");
+    dashboard.engagement.scopeRules = dashboard.engagement.scopeRules.filter((item) => item.id !== ruleId);
+    return current;
+  });
   await store.appendAudit({ id: id("audit"), actor: "human", action: "scope.rule.removed", resource: ruleId, detail: rule, createdAt: new Date().toISOString() });
   return reply.status(204).send();
 });

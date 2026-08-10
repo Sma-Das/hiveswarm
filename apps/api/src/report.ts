@@ -1,4 +1,4 @@
-import type { Dashboard, Finding, GraphNode } from "@hiveswarm/contracts";
+import { evidenceAttackPaths, type Dashboard, type Finding } from "@hiveswarm/contracts";
 
 const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 } as const;
 
@@ -13,29 +13,6 @@ export type EvaluationReport = {
   artifacts: Dashboard["artifacts"];
   limitations: string[];
 };
-
-function attackPaths(dashboard: Dashboard) {
-  const byId = new Map(dashboard.graph.nodes.map((node) => [node.id, node]));
-  const outgoing = new Map<string, Dashboard["graph"]["edges"]>();
-  for (const edge of dashboard.graph.edges) outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge]);
-  const roots = dashboard.graph.nodes.filter((node) => ["engagement", "host", "website", "repository"].includes(node.kind));
-  const paths: Array<{ labels: string[]; relationships: string[] }> = [];
-  const visit = (node: GraphNode, labels: string[], relationships: string[], seen: Set<string>) => {
-    if (seen.has(node.id) || labels.length > 8 || paths.length >= 20) return;
-    const nextSeen = new Set(seen).add(node.id);
-    const nextLabels = [...labels, node.label];
-    if (node.kind === "finding") {
-      paths.push({ labels: nextLabels, relationships });
-      return;
-    }
-    for (const edge of outgoing.get(node.id) ?? []) {
-      const target = byId.get(edge.target);
-      if (target) visit(target, nextLabels, [...relationships, edge.label ?? edge.relationship], nextSeen);
-    }
-  };
-  for (const root of roots) visit(root, [], [], new Set());
-  return paths;
-}
 
 export function generateReport(dashboard: Dashboard): EvaluationReport {
   const findings = [...dashboard.findings].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
@@ -57,7 +34,7 @@ export function generateReport(dashboard: Dashboard): EvaluationReport {
     executiveSummary,
     risk,
     findings,
-    attackPaths: attackPaths(dashboard),
+    attackPaths: evidenceAttackPaths(dashboard),
     coverage: dashboard.agents.map((agent) => ({ agent: agent.agentName, lifecycle: agent.lifecycle, status: agent.status, task: agent.task })),
     artifacts: dashboard.artifacts,
     limitations,

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join } from "node:path";
 import type { AgentEvent, AgentManifest, AgentRun } from "@hiveswarm/contracts";
 import { agentEventSchema, agentManifestSchema } from "@hiveswarm/contracts";
 import { Worker } from "bullmq";
@@ -7,6 +7,7 @@ import Docker from "dockerode";
 import IORedis from "ioredis";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { compileExecutionPlan } from "./execution-plan.js";
 
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const apiUrl = process.env.API_URL ?? "http://localhost:4100";
@@ -45,68 +46,7 @@ async function simulate(agentRun: AgentRun) {
 }
 
 async function executeContainer(agentRun: AgentRun, manifest: AgentManifest) {
-  const requestedCapabilities = agentRun.requestedCapabilities ?? [];
-  const undeclared = requestedCapabilities.find((capability) => !manifest.capabilities.includes(capability));
-  if (undeclared) throw new Error(`${manifest.name} execution requested undeclared capability ${undeclared}.`);
-  const needsNetwork = requestedCapabilities.some((capability) => capability.startsWith("network.") || capability === "browser.interactive" || capability === "proxy.intercept");
-  const mounts: Docker.MountSettings[] = [
-    { Type: "volume", Source: process.env.ARTIFACT_VOLUME ?? "hiveswarm-artifacts", Target: "/artifacts", ReadOnly: false },
-  ];
-  if (requestedCapabilities.includes("source.read")) {
-    const sourceRoot = process.env.HIVESWARM_SOURCE_ROOT;
-    const repository = agentRun.target.startsWith("repository:") ? agentRun.target.slice("repository:".length) : "";
-    if (!sourceRoot || !repository) throw new Error("Source agents require a repository: target and HIVESWARM_SOURCE_ROOT on the Docker host.");
-    const root = resolve(sourceRoot);
-    const source = resolve(root, repository);
-    if (source !== root && !source.startsWith(`${root}${sep}`)) throw new Error("Repository target escapes HIVESWARM_SOURCE_ROOT.");
-    mounts.push({ Type: "bind", Source: source, Target: "/target", ReadOnly: true });
-  }
-  const configuredEnvironment = manifest.configuration.flatMap(({ key, required }) => {
-    const value = process.env[key];
-    if (required && !value) throw new Error(`${manifest.name} requires worker configuration ${key}.`);
-    return value ? [`${key}=${value}`] : [];
-  });
-  const isBurp = manifest.id === "burp-suite";
-  const isFreeform = manifest.id === "freeform-ubuntu";
-  const isHeavy = isBurp || requestedCapabilities.includes("browser.interactive") || manifest.id === "semgrep" || isFreeform;
-  if (isBurp) mounts.push({ Type: "volume", Source: process.env.BURP_VOLUME ?? "hiveswarm-burp", Target: "/opt/burp", ReadOnly: false });
-  const container = await docker.createContainer({
-    Image: manifest.image,
-    Cmd: manifest.command,
-    Env: [
-      `HIVESWARM_AGENT_ID=${manifest.id}`,
-      `HIVESWARM_AGENT_RUN_ID=${agentRun.id}`,
-      `HIVESWARM_TASK=${agentRun.task}`,
-      `HIVESWARM_TARGET=${agentRun.target}`,
-      `HIVESWARM_LIFECYCLE=${agentRun.lifecycle}`,
-      `HIVESWARM_DEPTH=${agentRun.depth}`,
-      `HIVESWARM_API_URL=${apiUrl}`,
-      `HIVESWARM_ARTIFACT_DIR=/artifacts/${agentRun.id}`,
-      `HIVESWARM_ARTIFACT_BASE=/api/artifacts/${agentRun.id}`,
-      `HIVESWARM_REQUESTED_CAPABILITIES=${requestedCapabilities.join(",")}`,
-      ...(isFreeform ? [`HIVESWARM_EXECUTION_PLAN_B64=${Buffer.from(JSON.stringify(agentRun.executionPlan ?? [])).toString("base64url")}`] : []),
-      ...(requestedCapabilities.includes("source.read") ? ["HIVESWARM_SOURCE_PATH=/target"] : []),
-      ...configuredEnvironment,
-    ],
-    Labels: { "hiveswarm.agent": manifest.id, "hiveswarm.agent-run": agentRun.id },
-    OpenStdin: agentRun.lifecycle === "session",
-    Tty: false,
-    HostConfig: {
-      AutoRemove: false,
-      ReadonlyRootfs: true,
-      CapDrop: ["ALL"],
-      SecurityOpt: ["no-new-privileges:true"],
-      NetworkMode: needsNetwork ? (process.env.AGENT_NETWORK ?? "hiveswarm-egress") : "none",
-      Memory: (isBurp ? 4_096 : isHeavy ? 1_536 : 512) * 1024 * 1024,
-      NanoCpus: (isBurp ? 2 : 1) * 1_000_000_000,
-      PidsLimit: 256,
-      Tmpfs: {
-        "/tmp": "rw,noexec,nosuid,size=128m",
-        ...(isFreeform ? { "/workspace": "rw,nosuid,size=256m" } : {}),
-      },
-      Mounts: mounts,
-    },
-  });
+  const container = await docker.createContainer(compileExecutionPlan(agentRun, manifest, apiUrl, process.env));
 
   const stream = await container.attach({ stream: true, stdout: true, stderr: true });
   const streamEnded = new Promise<void>((resolveStream) => {
