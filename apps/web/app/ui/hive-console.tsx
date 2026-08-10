@@ -4,7 +4,7 @@ import type { AgentManifest, Dashboard, Finding, GraphNode, ProjectSummary, Spaw
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   Activity, Bot, Boxes, ChevronDown, CircleDotDashed, Command, FileSearch, FileText,
-  GitFork, Hexagon, LayoutDashboard, Network, Play, Plus, Search, ShieldCheck, Target, Waypoints, X,
+  GitFork, Hexagon, LayoutDashboard, Network, Play, Plus, Search, SearchX, ShieldCheck, Target, Waypoints, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgentRow } from "./agent-row";
@@ -29,6 +29,17 @@ function relativeTime(value: string) {
   if (minutes < 1) return "now";
   if (minutes === 1) return "1 min ago";
   return `${minutes} min ago`;
+}
+
+function FilteredEmpty({ query, noun, onClear }: { query: string; noun: string; onClear: () => void }) {
+  return (
+    <div className="filtered-empty">
+      <SearchX size={24} strokeWidth={1.5} aria-hidden="true" />
+      <h2>No {noun} match “{query}”</h2>
+      <p>Try another search or clear the current filter.</p>
+      <button className="button button--quiet" onClick={onClear}>Clear search</button>
+    </div>
+  );
 }
 
 export function HiveConsole() {
@@ -112,9 +123,21 @@ export function HiveConsole() {
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const visibleFindings = sortedFindings.filter((finding) => !normalizedQuery || `${finding.title} ${finding.assetLabel} ${finding.summary} ${finding.severity}`.toLowerCase().includes(normalizedQuery));
   const visibleLogs = (dashboard?.logs ?? []).filter((log) => !normalizedQuery || log.message.toLowerCase().includes(normalizedQuery) || dashboard?.agents.find((agent) => agent.id === log.agentRunId)?.agentName.toLowerCase().includes(normalizedQuery));
+  const visibleAgents = (dashboard?.agents ?? []).filter((agent) => !normalizedQuery || `${agent.agentName} ${agent.task} ${agent.status}`.toLowerCase().includes(normalizedQuery));
   const visibleNodes = (dashboard?.graph.nodes ?? []).filter((node) => !normalizedQuery || `${node.label} ${node.subtitle ?? ""} ${node.kind}`.toLowerCase().includes(normalizedQuery));
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
   const visibleEdges = (dashboard?.graph.edges ?? []).filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target));
+  const searchResultMessage = normalizedQuery && (pageView === "evaluation" || pageView === "findings")
+    ? pageView === "findings" || activeView === "findings"
+      ? `${visibleFindings.length} ${visibleFindings.length === 1 ? "finding" : "findings"} match ${searchQuery.trim()}.`
+      : activeView === "activity"
+        ? `${visibleLogs.length} ${visibleLogs.length === 1 ? "event" : "events"} match ${searchQuery.trim()}.`
+        : activeView === "swarm"
+          ? `${visibleAgents.length + visibleFindings.length} swarm items match ${searchQuery.trim()}.`
+          : activeView === "topology"
+            ? `${visibleNodes.length} ${visibleNodes.length === 1 ? "asset" : "assets"} match ${searchQuery.trim()}.`
+            : ""
+    : "";
 
   async function decide(decision: "approved" | "denied") {
     if (!pendingApproval) return;
@@ -124,7 +147,7 @@ export function HiveConsole() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }),
       });
       if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to save the decision.");
-      setStatusMessage(decision === "approved" ? "The request was approved once." : "The request was denied.");
+      setStatusMessage(decision === "approved" ? "Request approved for one use." : "Request denied.");
       await refresh();
     } catch (cause) { setStatusMessage(cause instanceof Error ? cause.message : "Unable to save the decision."); }
     finally { setDecisionBusy(false); }
@@ -137,7 +160,7 @@ export function HiveConsole() {
     });
     const payload = await response.json() as { error?: string; approvalRequired?: boolean };
     if (!response.ok) throw new Error(payload.error ?? "Unable to start the specialist.");
-    setStatusMessage(payload.approvalRequired ? "The specialist is waiting for approval." : "The specialist is starting.");
+    setStatusMessage(payload.approvalRequired ? "Specialist is waiting for approval." : "Specialist is starting.");
     await refresh();
   }
 
@@ -149,7 +172,7 @@ export function HiveConsole() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
     });
     if (!response.ok) { setStatusMessage("Unable to change the run state."); return; }
-    setStatusMessage(status === "paused" ? "The evaluation is paused." : "The evaluation is running.");
+    setStatusMessage(status === "paused" ? "Evaluation paused." : "Evaluation resumed.");
     await refresh();
   }
 
@@ -161,7 +184,7 @@ export function HiveConsole() {
       const response = await fetch(`${apiUrl}/api/runs/${runId}/orchestrate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const payload = await response.json() as { error?: string; spawned?: unknown[] };
       if (!response.ok) throw new Error(payload.error ?? "Unable to run the orchestrator.");
-      setStatusMessage(`The orchestrator started ${payload.spawned?.length ?? 0} specialists.`);
+      setStatusMessage(`Orchestrator started ${payload.spawned?.length ?? 0} specialists.`);
       await refresh();
     } catch (cause) { setStatusMessage(cause instanceof Error ? cause.message : "Unable to run the orchestrator."); }
     finally { setOrchestrating(false); }
@@ -170,28 +193,28 @@ export function HiveConsole() {
   async function terminateAgent(agentRunId: string) {
     const response = await fetch(`${apiUrl}/api/agent-runs/${agentRunId}/terminate`, { method: "POST" });
     if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to terminate the agent.");
-    setStatusMessage("The agent was terminated.");
+    setStatusMessage("Agent terminated.");
     await refresh();
   }
 
   async function installManifest(manifest: unknown) {
     const response = await fetch(`${apiUrl}/api/agents/install`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(manifest) });
     if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to install the manifest.");
-    setStatusMessage("The agent manifest was installed.");
+    setStatusMessage("Agent manifest installed.");
     await refresh();
   }
 
   async function addScopeRule(rule: { kind: "host" | "domain" | "cidr" | "url-prefix" | "repository"; value: string; action: "allow" | "deny" }) {
     const response = await fetch(`${apiUrl}/api/scope/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...rule, projectId: dashboard?.engagement.id }) });
     if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to add the scope rule.");
-    setStatusMessage("The scope rule was added.");
+    setStatusMessage("Scope rule added.");
     await refresh();
   }
 
   async function removeScopeRule(ruleId: string) {
     const response = await fetch(`${apiUrl}/api/scope/rules/${ruleId}?projectId=${encodeURIComponent(dashboard?.engagement.id ?? "")}`, { method: "DELETE" });
     if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to remove the scope rule.");
-    setStatusMessage("The scope rule was removed.");
+    setStatusMessage("Scope rule removed.");
     await refresh();
   }
 
@@ -201,7 +224,7 @@ export function HiveConsole() {
     const response = await fetch(`${apiUrl}/api/engagements`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input, scopeRules: [{ id: "scope_primary", kind, value: kind === "repository" ? input.target : normalized, action: "allow" }] }) });
     if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Unable to create the engagement.");
     setPageView("evaluation"); setActiveView("topology"); setSelectedAgentId(""); setSelectedNode(null); setSelectedFinding(null);
-    setStatusMessage("The project was created. Run the orchestrator when you are ready.");
+    setStatusMessage("Project created. Run the orchestrator when you’re ready.");
     await refresh();
   }
 
@@ -227,6 +250,7 @@ export function HiveConsole() {
   return (
     <div className="app-shell">
       <div className="sr-only" role="status">{statusMessage}</div>
+      <div className="sr-only" role="status">{searchResultMessage}</div>
       {statusMessage ? <div className="status-toast"><span>{statusMessage}</span><button aria-label="Dismiss message" onClick={() => setStatusMessage("")}><X size={16} aria-hidden="true" /></button></div> : null}
       <header className="topbar">
         <a className="brand" href="/" aria-label="HiveSwarm home"><HiveMark small /><span>HiveSwarm</span><small>alpha</small></a>
@@ -277,9 +301,15 @@ export function HiveConsole() {
           </div>
           <div className="workspace-actions">
             <button className="button button--quiet" onClick={() => void toggleRun()}><CircleDotDashed size={16} strokeWidth={1.5} aria-hidden="true" />{dashboard.engagement.status === "paused" ? "Resume run" : "Pause run"}</button>
+            <button className="button button--quiet mobile-specialist-action" onClick={() => setSpawnOpen(true)}><Plus size={16} strokeWidth={2} aria-hidden="true" />Start specialist</button>
             <button className="button button--primary" disabled={orchestrating || dashboard.engagement.status === "paused"} onClick={() => void runOrchestrator()}><Play size={16} strokeWidth={2} aria-hidden="true" />{orchestrating ? "Orchestrating" : "Run orchestrator"}</button>
           </div>
         </section>
+
+        {pendingApproval ? <section className="responsive-approval" aria-label="Pending human decision">
+          <ApprovalCard approval={pendingApproval} busy={decisionBusy} detailId="responsive-approval-detail" onDecision={(decision) => void decide(decision)} />
+          <div className="responsive-approval__detail" id="responsive-approval-detail"><p className="eyebrow">Requested action</p><p>{pendingApproval.requestedAction}</p><small>Requested by {pendingApproval.requestedBy} · {relativeTime(pendingApproval.createdAt)}</small></div>
+        </section> : null}
 
         <section className="metric-strip" aria-label="Evaluation summary">
           <div><span>Active agents</span><strong>{dashboard.metrics.activeAgents}</strong><small>{dashboard.agents.length} total executions</small></div>
@@ -298,18 +328,22 @@ export function HiveConsole() {
               <button aria-pressed={pageView === "evaluation" && activeView === "activity"} onClick={() => { setPageView("evaluation"); setActiveView("activity"); }}><Activity size={15} strokeWidth={1.5} aria-hidden="true" />Activity</button>
             </div>
             <div className="toolbar-actions">
-              <label className="search-control"><span className="sr-only">Search evidence</span><Search size={15} strokeWidth={1.5} aria-hidden="true" /><input type="search" aria-label="Search evidence" placeholder="Search evidence" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /></label>
+              {activeView !== "scope" ? <div className="search-control"><Search size={15} strokeWidth={1.5} aria-hidden="true" /><label className="sr-only" htmlFor="evidence-search">Search evidence</label><input id="evidence-search" type="search" placeholder="Search evidence" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />{searchQuery ? <button className="search-control__clear" aria-label="Clear evidence search" onClick={() => setSearchQuery("")}><X size={14} aria-hidden="true" /></button> : null}</div> : null}
             </div>
           </div>
 
-          {pageView !== "findings" && activeView === "topology" ? (
+          {pageView !== "findings" && activeView === "topology" && normalizedQuery && !visibleNodes.length ? (
+            <FilteredEmpty query={searchQuery.trim()} noun="assets" onClear={() => setSearchQuery("")} />
+          ) : pageView !== "findings" && activeView === "topology" ? (
             <div className="graph-wrap">
               <SecurityGraph nodes={visibleNodes} edges={visibleEdges} onSelect={selectGraphNode} />
               <div className="graph-legend" aria-label="Graph legend"><span><i className="legend-dot legend-dot--target" />Asset</span><span><i className="legend-dot legend-dot--finding" />Finding</span><span><i className="legend-dot legend-dot--scope" />Scope review</span></div>
             </div>
+          ) : pageView !== "findings" && activeView === "swarm" && normalizedQuery && !visibleAgents.length && !visibleFindings.length ? (
+            <FilteredEmpty query={searchQuery.trim()} noun="swarm items" onClear={() => setSearchQuery("")} />
           ) : pageView !== "findings" && activeView === "swarm" ? (
             <div className="graph-wrap">
-              <SwarmGraph agents={dashboard.agents} findings={visibleFindings} onSelectAgent={(agentRunId) => { setSelectedAgentId(agentRunId); setSelectedNode(null); }} onSelectFinding={setSelectedFinding} />
+              <SwarmGraph agents={normalizedQuery ? visibleAgents : dashboard.agents} findings={visibleFindings} onSelectAgent={(agentRunId) => { setSelectedAgentId(agentRunId); setSelectedNode(null); }} onSelectFinding={setSelectedFinding} />
               <div className="graph-legend" aria-label="Swarm legend"><span><i className="legend-dot legend-dot--active" />Running</span><span><i className="legend-dot legend-dot--scope" />Waiting</span><span><i className="legend-dot legend-dot--finding" />Failed or finding</span></div>
             </div>
           ) : pageView !== "findings" && activeView === "scope" ? (
@@ -323,9 +357,12 @@ export function HiveConsole() {
               {visibleFindings.map((finding) => (
                 <button className="finding-row" key={finding.id} onClick={() => setSelectedFinding(finding)}>
                   <div><SeverityBadge severity={finding.severity} /><strong>{finding.title}</strong><p>{finding.summary}</p></div>
-                  <bdi>{finding.assetLabel}</bdi><span className="numeric">{Math.round(finding.confidence * 100)}%</span><span>{finding.status}</span>
+                  <span className="finding-row__field"><small>Asset</small><bdi>{finding.assetLabel}</bdi></span>
+                  <span className="finding-row__field"><small>Confidence</small><span className="numeric">{Math.round(finding.confidence * 100)}%</span></span>
+                  <span className="finding-row__field"><small>Status</small><span>{finding.status}</span></span>
                 </button>
               ))}
+              {normalizedQuery && !visibleFindings.length ? <FilteredEmpty query={searchQuery.trim()} noun="findings" onClear={() => setSearchQuery("")} /> : null}
             </div>
           ) : (
             <div className="activity-feed">
@@ -333,6 +370,7 @@ export function HiveConsole() {
                 const owner = dashboard.agents.find((agent) => agent.id === log.agentRunId)?.agentName ?? "Agent";
                 return <article className={`log-row log-row--${log.level}`} key={log.id}><span className="log-row__time">{relativeTime(log.timestamp)}</span><span className="log-row__agent">{owner}</span><p>{log.message}</p></article>;
               })}
+              {normalizedQuery && !visibleLogs.length ? <FilteredEmpty query={searchQuery.trim()} noun="events" onClear={() => setSearchQuery("")} /> : null}
             </div>
           )}
         </section>

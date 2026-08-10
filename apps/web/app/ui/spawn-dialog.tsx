@@ -9,6 +9,7 @@ export function SpawnDialog({ open, agents, parentAgents, target, onClose, onSpa
   onSpawn: (request: SpawnAgentRequest) => Promise<void>;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const specialistRef = useRef<HTMLSelectElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState("explorer");
@@ -18,7 +19,10 @@ export function SpawnDialog({ open, agents, parentAgents, target, onClose, onSpa
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
+    if (open && !dialog.open) {
+      dialog.showModal();
+      specialistRef.current?.focus();
+    }
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
@@ -51,7 +55,7 @@ export function SpawnDialog({ open, agents, parentAgents, target, onClose, onSpa
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} strokeWidth={1.5} aria-hidden="true" /></button>
         </div>
         <div className="form-grid">
-          <label>Specialist<select name="agentId" aria-label="Specialist" required value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)}>{agents.filter((agent) => agent.id !== "orchestrator").map((agent) => <option key={`${agent.id}-${agent.version}`} value={agent.id}>{agent.name}</option>)}</select></label>
+          <label>Specialist<select ref={specialistRef} name="agentId" aria-label="Specialist" required value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)}>{agents.filter((agent) => agent.id !== "orchestrator").map((agent) => <option key={`${agent.id}-${agent.version}`} value={agent.id}>{agent.name}</option>)}</select></label>
           <label>Lifecycle<select name="lifecycle" aria-label="Specialist lifecycle" required defaultValue="task">{selectedManifest?.lifecycle.map((lifecycle) => <option key={lifecycle} value={lifecycle}>{lifecycle === "task" ? "Task · exits when complete" : "Session · remains available"}</option>)}</select></label>
           <label>Parent agent<select name="parentAgentRunId" aria-label="Parent agent" defaultValue={parentAgents.find((agent) => agent.depth === 0)?.id ?? ""}><option value="">Orchestrator root</option>{parentAgents.filter((agent) => agent.depth < 5).map((agent) => <option key={agent.id} value={agent.id}>{"· ".repeat(agent.depth)}{agent.agentName}</option>)}</select></label>
           <label>Target<input name="target" aria-label="Specialist target" defaultValue={target} required /></label>
