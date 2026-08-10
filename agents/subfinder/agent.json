@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1",
+  "id": "subfinder",
+  "name": "Subfinder",
+  "version": "0.1.0",
+  "description": "Discovers authorized subdomains through rate-bounded passive sources without directly probing the target infrastructure.",
+  "role": "passive-subdomain-discovery",
+  "image": "hiveswarm/subfinder:dev",
+  "command": ["node", "/agent/run.mjs"],
+  "lifecycle": ["task"],
+  "capabilities": ["network.passive", "graph.write"],
+  "skills": ["subfinder", "passive-dns", "certificate-transparency"],
+  "accepts": ["domain", "passive-source-list", "rate-limit"],
+  "emits": ["subdomain"],
+  "configuration": [
+    { "key": "SUBFINDER_RATE_LIMIT", "required": false, "secret": false, "description": "Passive-source requests per second, clamped to 1-20 (default 10)." },
+    { "key": "SUBFINDER_SOURCES", "required": false, "secret": false, "description": "Optional comma-separated allowlist of Subfinder passive sources." },
+    { "key": "SUBFINDER_PROVIDER_CONFIG_B64", "required": false, "secret": true, "description": "Optional base64-encoded Subfinder provider-config YAML containing operator-managed API keys." }
+  ],
+  "enabled": true,
+  "labels": {
+    "runtime": "ephemeral",
+    "mode": "passive",
+    "upstream": "https://github.com/projectdiscovery/subfinder",
+    "upstream-version": "2.15.0"
+  }
+}

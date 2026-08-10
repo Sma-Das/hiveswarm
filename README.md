@@ -5,10 +5,10 @@ HiveSwarm is a human-governed, multi-agent application-security evaluation platf
 This repository implements the core vertical slice:
 
 - model-directed orchestration through a provider interface, with OpenAI Responses function calling first and a deterministic offline fallback;
-- versioned runtime installation and discovery for 12 agents;
+- versioned runtime installation and discovery for 13 agents;
 - task and session lifecycles, pause/resume/terminate controls, and recursive spawning to depth five;
 - deny-by-default target policy, one-time human approval gates, audit events, bounded scan settings, and authenticated worker callbacks;
-- real adapters for Playwright, Nmap, Gobuster, Semgrep, TruffleHog, and a license-safe bring-your-own-JAR Burp runtime;
+- real adapters for Playwright, Nmap, Gobuster, Subfinder, Semgrep, TruffleHog, and a license-safe bring-your-own-JAR Burp runtime;
 - project-partitioned PostgreSQL persistence, Redis dispatch, isolated Docker execution, SSE updates, and artifact storage;
 - a responsive Next.js console with fast project switching, live swarm and scope graphs, searchable application topology, finding-path drill-downs, logs, registry, approvals, and Markdown reports.
 
@@ -52,6 +52,7 @@ Without the Docker override, `docker compose up --build` runs PostgreSQL, Redis,
 | Directory enumerator | task | rate-bounded Gobuster paths |
 | Port scanner | task | rate-bounded Nmap service discovery |
 | Subdomain/vhost enumerator | task | bounded Gobuster DNS discovery |
+| Subfinder | task | rate-bounded passive subdomain discovery |
 | Reporter | task or session | artifact and live report coordination |
 | Freeform Ubuntu | task | human-reviewed command plans in an isolated Ubuntu toolbox |
 | Orchestrator | session | registry-aware evaluation manager |

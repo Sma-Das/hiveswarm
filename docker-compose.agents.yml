@@ -40,6 +40,10 @@ services:
     image: hiveswarm/subdomain-enumerator:dev
     build: { context: ., dockerfile: agents/Dockerfile, target: subdomain-enumerator }
     profiles: [agents]
+  agent-subfinder:
+    image: hiveswarm/subfinder:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: subfinder }
+    profiles: [agents]
   agent-reporter:
     image: hiveswarm/reporter:dev
     build: { context: ., dockerfile: agents/Dockerfile, target: reporter }

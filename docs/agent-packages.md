@@ -21,6 +21,8 @@ curl -X POST http://localhost:4100/api/agents/install \
 
 Registration does not pull or execute an image. This deliberately leaves room for administrator approval, signature verification, SBOM checks, and vulnerability scanning before admission.
 
+The built-in Subfinder package pins the upstream binary version in `agents/Dockerfile`, disables its self-update check, and caps passive-source requests. Operators may optionally provide `SUBFINDER_PROVIDER_CONFIG_B64` as base64-encoded provider-config YAML; the worker passes it as a declared secret and the runtime writes it only to the container's temporary filesystem.
+
 ## Runtime input
 
 The worker supplies:

@@ -22,6 +22,12 @@ COPY --from=gobuster-build /out/gobuster /usr/local/bin/gobuster
 
 FROM directory-enumerator AS subdomain-enumerator
 
+FROM golang:1.25-bookworm AS subfinder-build
+RUN GOBIN=/out go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.15.0
+
+FROM node-runtime AS subfinder
+COPY --from=subfinder-build /out/subfinder /usr/local/bin/subfinder
+
 FROM mcr.microsoft.com/playwright:v1.55.0-noble AS browser-user
 WORKDIR /agent
 COPY agents/runtime/run.mjs /agent/run.mjs

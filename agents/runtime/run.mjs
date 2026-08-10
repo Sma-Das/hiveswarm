@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join, relative, resolve } from "node:path";
 
 const agentId = process.env.HIVESWARM_AGENT_ID ?? "unknown";
@@ -124,6 +124,52 @@ async function domainScan() {
   log("Bounded subdomain enumeration completed.");
 }
 
+function boundedInteger(value, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
+}
+
+async function subfinderScan() {
+  const domain = new URL(asUrl(target)).hostname.toLowerCase().replace(/\.$/, "");
+  const runtimeDir = await mkdtemp("/tmp/subfinder-");
+  const configPath = join(runtimeDir, "config.yaml");
+  const providerConfigPath = join(runtimeDir, "provider-config.yaml");
+  await writeFile(configPath, "{}\n", { encoding: "utf8", mode: 0o600 });
+
+  const encodedProviderConfig = process.env.SUBFINDER_PROVIDER_CONFIG_B64;
+  const providerConfig = encodedProviderConfig ? Buffer.from(encodedProviderConfig, "base64").toString("utf8") : "{}\n";
+  if (Buffer.byteLength(providerConfig, "utf8") > 256 * 1024) throw new Error("Subfinder provider configuration exceeds 256 KiB.");
+  await writeFile(providerConfigPath, providerConfig, { encoding: "utf8", mode: 0o600 });
+
+  const rateLimit = boundedInteger(process.env.SUBFINDER_RATE_LIMIT, 10, 1, 20);
+  const args = [
+    "-d", domain,
+    "-silent",
+    "-duc",
+    "-rl", String(rateLimit),
+    "-timeout", "15",
+    "-max-time", "2",
+    "-config", configPath,
+    "-pc", providerConfigPath,
+  ];
+  if (process.env.SUBFINDER_SOURCES?.trim()) args.push("-s", process.env.SUBFINDER_SOURCES.trim());
+
+  log(`Starting passive Subfinder discovery for ${domain} at up to ${rateLimit} requests per second.`);
+  const result = await run("subfinder", args, 150_000);
+  if (result.code !== 0 && !result.stdout.trim()) throw new Error(result.stderr.trim() || `subfinder exited with ${result.code}`);
+
+  const domainRef = node("host", domain, "Passive subdomain discovery target", { scanner: "subfinder", mode: "passive" });
+  const discovered = new Set();
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const hostname = line.trim().toLowerCase().replace(/\.$/, "");
+    if (!hostname || hostname === domain || !hostname.endsWith(`.${domain}`) || discovered.has(hostname) || discovered.size >= 500) continue;
+    discovered.add(hostname);
+    const subdomainRef = node("subdomain", hostname, "Discovered through passive sources", { scanner: "subfinder", mode: "passive" });
+    edge(domainRef, subdomainRef, "has_subdomain");
+  }
+  log(`Passive Subfinder discovery completed with ${discovered.size} unique subdomains.`);
+}
+
 const reviewExtensions = new Set([".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rb", ".java", ".cs", ".php"]);
 async function sourceFiles(root, current = root, found = []) {
   if (found.length >= 500) return found;
@@ -166,6 +212,7 @@ async function main() {
   else if (agentId === "port-scanner") await portScan();
   else if (agentId === "directory-enumerator") await directoryScan();
   else if (agentId === "subdomain-enumerator") await domainScan();
+  else if (agentId === "subfinder") await subfinderScan();
   else if (agentId === "source-review") await sourceReview();
   else if (agentId === "reporter") await reporter();
   else log(`No runtime handler is registered for ${agentId}.`, "warn");

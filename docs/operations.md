@@ -32,6 +32,12 @@ Pause freezes active containers and prevents new spawns. Resume unfreezes sessio
 
 Screenshots and reports are written to `hiveswarm-artifacts`, served through path-validated API routes, and linked from Report. The Markdown export is a live snapshot: retain it together with raw logs, screenshots, scope, tool versions, and authorization records according to the engagement's evidence policy.
 
+## Subfinder preparation
+
+The built-in Subfinder specialist uses passive sources only; it does not enable Subfinder's active resolution mode. It still makes outbound requests to third-party data providers, so review their terms, configure destination-enforced egress, and select only sources permitted for the engagement. `SUBFINDER_RATE_LIMIT` defaults to 10 and is clamped to 1-20 requests per second; `SUBFINDER_SOURCES` may contain a comma-separated source allowlist.
+
+API-backed sources can use base64-encoded provider-config YAML from `SUBFINDER_PROVIDER_CONFIG_B64`. Supply it to the worker through an operator-controlled secret channel, never commit it or put it in a manifest, and remember that the local-alpha worker passes declared package secrets through the container environment. The runtime writes the decoded file with private permissions on the container's temporary filesystem, disables update checks, stops source collection after two minutes, and emits at most 500 validated names beneath the assigned domain.
+
 ## Burp preparation
 
 1. Download the current unified Burp JAR directly from PortSwigger and accept its license terms.
