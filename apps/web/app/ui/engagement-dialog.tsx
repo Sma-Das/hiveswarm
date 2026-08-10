@@ -5,9 +5,18 @@ import { useEffect, useRef, useState } from "react";
 
 export function EngagementDialog({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (input: { name: string; target: string }) => Promise<void> }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => { const dialog = ref.current; if (!dialog) return; if (open && !dialog.open) dialog.showModal(); if (!open && dialog.open) dialog.close(); }, [open]);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      dialog.showModal();
+      nameRef.current?.focus();
+    }
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
   return (
     <dialog ref={ref} className="dialog" onClose={onClose} onCancel={onClose} aria-labelledby="engagement-title">
       <form className="dialog__surface" onSubmit={async (event) => {
@@ -19,10 +28,10 @@ export function EngagementDialog({ open, onClose, onCreate }: { open: boolean; o
       }}>
         <div className="dialog__header"><div><p className="eyebrow">Authorized target</p><h2 id="engagement-title">Create a project</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} aria-hidden="true" /></button></div>
         <div className="form-grid">
-          <label className="form-grid__wide">Project name<input name="name" aria-label="Project name" required placeholder="Northstar portal" /></label>
-          <label className="form-grid__wide">Primary target<input name="target" aria-label="Primary target" required placeholder="https://app.example.test" /></label>
+          <label className="form-grid__wide">Project name<input ref={nameRef} name="name" aria-label="Project name" required placeholder="Northstar portal" /></label>
+          <label className="form-grid__wide">Primary target<input name="target" aria-label="Primary target" aria-describedby="project-target-hint" required placeholder="https://app.example.test" /></label>
         </div>
-        <p className="form-hint">HiveSwarm creates one exact-host allow rule. Add broader domain, URL, CIDR, or repository boundaries from Scope after creation.</p>
+        <p className="form-hint" id="project-target-hint">Enter a URL, hostname, or repository reference. HiveSwarm creates one exact-target allow rule; add broader boundaries from Scope.</p>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         <div className="dialog__actions"><button type="button" className="button button--quiet" onClick={onClose}>Cancel</button><button className="button button--primary" disabled={busy}>{busy ? "Creating project" : "Create project"}</button></div>
       </form>

@@ -97,7 +97,7 @@ function GraphCanvas({ nodes, edges, mode, ariaLabel, onSelect, compact = false 
       <ReactFlow nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: compact ? 0.28 : 0.18 }} minZoom={0.35} maxZoom={1.8} nodesDraggable nodesConnectable={false} onNodeClick={(_, node) => onSelect(node.data)} onPaneClick={() => onSelect(null)} proOptions={{ hideAttribution: true }}>
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--graph-dot)" />
         <Controls showInteractive={false} position="bottom-left" aria-label="Graph zoom controls" />
-        {!compact ? <MiniMap position="bottom-right" pannable zoomable nodeColor="#9aa4b2" maskColor="rgba(9, 11, 15, 0.76)" style={{ background: "#171a20" }} aria-label="Graph overview" /> : null}
+        {!compact ? <MiniMap position="bottom-right" pannable zoomable nodeColor="var(--minimap-node)" maskColor="var(--minimap-mask)" style={{ background: "var(--surface-raised)" }} aria-label="Graph overview" /> : null}
       </ReactFlow>
     </div>
   );

@@ -10,7 +10,7 @@ export function RegistryView({ agents, onInstall }: { agents: AgentManifest[]; o
   return (
     <section className="management-view" aria-labelledby="registry-title">
       <div className="management-heading">
-        <div><p className="eyebrow">Mutable specialist catalog</p><h2 id="registry-title">Agent registry</h2><p>Install or replace container-backed roles without changing the orchestrator.</p></div>
+        <div><p className="eyebrow">Mutable specialist catalog</p><h1 id="registry-title">Agent registry</h1><p>Install or replace container-backed roles without changing the orchestrator.</p></div>
         <span className="count-pill"><Box size={15} aria-hidden="true" />{agents.length} installed</span>
       </div>
       <div className="registry-grid">
