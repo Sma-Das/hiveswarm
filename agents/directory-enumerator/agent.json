@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "directory-enumerator",
+  "name": "Directory enumerator",
+  "version": "0.1.0",
+  "description": "Enumerates authorized website paths with bounded wordlists, concurrency, and request rates.",
+  "role": "content-discovery",
+  "image": "hiveswarm/directory-enumerator:dev",
+  "command": ["node", "/agent/run.mjs"],
+  "lifecycle": ["task"],
+  "capabilities": ["network.active", "network.high-rate", "graph.write"],
+  "skills": ["gobuster", "wfuzz", "response-baselining"],
+  "accepts": ["base-url", "wordlist", "rate-limit"],
+  "emits": ["directory", "endpoint", "redirect"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "runtime": "ephemeral" }
+}

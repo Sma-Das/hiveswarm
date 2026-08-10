@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "reporter",
+  "name": "Reporter",
+  "version": "0.1.0",
+  "description": "Normalizes evidence, deduplicates assets and findings, and maintains the evaluation graph and report.",
+  "role": "evidence-reporting",
+  "image": "hiveswarm/reporter:dev",
+  "command": ["node", "/agent/run.mjs"],
+  "lifecycle": ["session", "task"],
+  "capabilities": ["graph.write", "finding.write"],
+  "skills": ["evidence-normalization", "deduplication", "attack-paths", "report-generation"],
+  "accepts": ["structured-evidence", "asset", "relationship", "finding-candidate"],
+  "emits": ["asset", "relationship", "finding", "evaluation-report"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "tier": "core" }
+}

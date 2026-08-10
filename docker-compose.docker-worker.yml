@@ -1,0 +1,13 @@
+services:
+  worker:
+    environment:
+      WORKER_MODE: docker
+      DOCKER_SOCKET: /var/run/docker.sock
+      AGENT_NETWORK: hiveswarm-agent-egress
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [control]
+
+networks:
+  agent-egress:
+    name: hiveswarm-agent-egress

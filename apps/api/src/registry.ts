@@ -1,0 +1,39 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { agentManifestSchema, type AgentManifest } from "@hiveswarm/contracts";
+import type { StateStore } from "./store.js";
+
+export class AgentRegistry {
+  constructor(private readonly store: StateStore, private readonly root: string) {}
+
+  async initialize() {
+    let entries: string[] = [];
+    try {
+      entries = await readdir(this.root);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      try {
+        const raw = await readFile(join(this.root, entry, "agent.json"), "utf8");
+        await this.store.upsertManifest(agentManifestSchema.parse(JSON.parse(raw)));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+  }
+
+  async list() { return this.store.listManifests(); }
+
+  async get(agentId: string): Promise<AgentManifest | undefined> {
+    const manifests = await this.list();
+    return manifests.find((manifest) => manifest.id === agentId && manifest.enabled);
+  }
+
+  async install(input: unknown) {
+    const manifest = agentManifestSchema.parse(input);
+    await this.store.upsertManifest(manifest);
+    return manifest;
+  }
+}

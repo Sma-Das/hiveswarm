@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "port-scanner",
+  "name": "Port scanner",
+  "version": "0.1.0",
+  "description": "Identifies reachable services on explicitly authorized hosts using bounded Nmap or RustScan profiles.",
+  "role": "service-discovery",
+  "image": "hiveswarm/port-scanner:dev",
+  "command": ["node", "/agent/run.mjs"],
+  "lifecycle": ["task"],
+  "capabilities": ["network.active", "network.high-rate", "graph.write"],
+  "skills": ["nmap", "rustscan", "service-fingerprinting"],
+  "accepts": ["host", "port-range", "rate-limit"],
+  "emits": ["host", "service", "fingerprint"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "runtime": "ephemeral" }
+}

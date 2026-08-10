@@ -1,0 +1,25 @@
+{
+  "name": "hiveswarm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Human-governed multi-agent application security evaluation platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,green \"npm run dev -w @hiveswarm/api\" \"npm run dev -w @hiveswarm/web\"",
+    "build": "npm run build -w @hiveswarm/api && npm run build -w @hiveswarm/worker && npm run build -w @hiveswarm/web",
+    "typecheck": "npm run typecheck -w @hiveswarm/api && npm run typecheck -w @hiveswarm/worker && npm run typecheck -w @hiveswarm/web",
+    "test": "npm run test -w @hiveswarm/api",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": "^20.17.0 || >=22.9.0"
+  }
+}

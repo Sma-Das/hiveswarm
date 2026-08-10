@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "orchestrator",
+  "name": "Orchestrator",
+  "version": "0.1.0",
+  "description": "Plans the evaluation, selects specialists, preserves scope, and owns the final security assessment.",
+  "role": "manager",
+  "image": "hiveswarm/orchestrator:dev",
+  "command": ["node", "/agent/run.mjs"],
+  "lifecycle": ["session"],
+  "capabilities": ["network.passive", "scope.propose", "graph.write", "finding.write"],
+  "skills": ["agent-selection", "evidence-synthesis", "risk-prioritization"],
+  "accepts": ["engagement", "scope", "agent-catalog"],
+  "emits": ["agent-task", "evaluation-summary"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "tier": "core" }
+}

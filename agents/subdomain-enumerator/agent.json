@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "subdomain-enumerator",
+  "name": "Subdomain and vhost enumerator",
+  "version": "0.1.0",
+  "description": "Discovers authorized subdomains and virtual hosts while separating DNS evidence from HTTP evidence.",
+  "role": "domain-discovery",
+  "image": "hiveswarm/subdomain-enumerator:dev",
+  "command": ["node", "/agent/run.mjs"],
+  "lifecycle": ["task"],
+  "capabilities": ["network.passive", "network.active", "network.high-rate", "scope.propose", "graph.write"],
+  "skills": ["dns-enumeration", "gobuster-vhost", "wfuzz", "wildcard-detection"],
+  "accepts": ["domain", "resolver-list", "rate-limit"],
+  "emits": ["subdomain", "vhost", "scope-proposal"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "runtime": "ephemeral" }
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "source-review",
+  "name": "Source review",
+  "version": "0.1.0",
+  "description": "Reviews source for authorization and business-logic weaknesses and may delegate bounded static scans.",
+  "role": "source-code-review",
+  "image": "hiveswarm/source-review:dev",
+  "command": ["node", "/agent/run.mjs"],
+  "lifecycle": ["task", "session"],
+  "capabilities": ["source.read", "source.scan", "secrets.scan", "graph.write", "finding.write"],
+  "skills": ["business-logic-review", "semgrep", "trufflehog", "data-flow-analysis"],
+  "accepts": ["repository", "focus-area", "threat-model"],
+  "emits": ["attack-hypothesis", "code-location", "finding", "agent-task"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "runtime": "ephemeral" }
+}

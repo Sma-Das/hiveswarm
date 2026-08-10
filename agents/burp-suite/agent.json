@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1",
+  "id": "burp-suite",
+  "name": "Burp Suite",
+  "version": "0.1.0",
+  "description": "Runs an intercepting proxy session for authorized request inspection and optional Pro automation.",
+  "role": "intercepting-proxy",
+  "image": "hiveswarm/burp-suite:dev",
+  "command": ["/opt/hiveswarm/start-burp"],
+  "lifecycle": ["session"],
+  "capabilities": ["network.active", "proxy.intercept", "browser.interactive", "finding.write"],
+  "skills": ["http-history", "request-modification", "repeater", "scanner-when-licensed"],
+  "accepts": ["target", "scope", "browser-session"],
+  "emits": ["request", "response", "site-map", "finding"],
+  "configuration": [
+    { "key": "BURP_LICENSE_KEY", "required": false, "secret": true, "description": "Optional Burp Pro license key; Community mode remains interactive." }
+  ],
+  "enabled": true,
+  "labels": { "runtime": "on-demand", "community": "supported", "pro": "optional" }
+}

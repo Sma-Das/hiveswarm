@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "browser-user",
+  "name": "Browser user",
+  "version": "0.1.0",
+  "description": "Uses a real browser to exercise application workflows, preserve screenshots, and report observed requests.",
+  "role": "interactive-browser",
+  "image": "hiveswarm/browser-user:dev",
+  "command": ["node", "/agent/run.mjs"],
+  "lifecycle": ["session", "task"],
+  "capabilities": ["network.passive", "browser.interactive", "credentials.use", "graph.write", "finding.write"],
+  "skills": ["playwright", "screenshots", "workflow-observation"],
+  "accepts": ["url", "workflow", "credential-reference"],
+  "emits": ["screenshot", "request-observation", "asset", "finding"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "runtime": "on-demand" }
+}
