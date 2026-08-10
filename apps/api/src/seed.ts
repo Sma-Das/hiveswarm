@@ -116,6 +116,7 @@ export function createDemoDashboard(): Dashboard {
         evidence: ["Request pair captured in the authorized test tenant", "Role transition reproduced twice"],
         remediation: "Bind acceptance to the current invitation record and invalidate the previous token when its role changes.",
         discoveredBy: "Source review",
+        agentRunId: "ar_source",
         createdAt: minutesAgo(5),
       },
       {
@@ -129,6 +130,7 @@ export function createDemoDashboard(): Dashboard {
         evidence: ["Introspection query returned 214 types"],
         remediation: "Restrict introspection in production and review field-level authorization independently.",
         discoveredBy: "Browser user",
+        agentRunId: "ar_browser",
         createdAt: minutesAgo(8),
       },
       {
@@ -141,6 +143,7 @@ export function createDemoDashboard(): Dashboard {
         summary: "The client route manifest references a separate administrative hostname that is outside the current scope.",
         evidence: ["Bundle string: admin.northstar.test"],
         discoveredBy: "Explorer",
+        agentRunId: "ar_explorer",
         createdAt: minutesAgo(10),
       },
       {
@@ -153,6 +156,7 @@ export function createDemoDashboard(): Dashboard {
         summary: "HSTS, frame restrictions, and MIME sniffing protections are present on sampled routes.",
         evidence: ["12 responses sampled"],
         discoveredBy: "Browser user",
+        agentRunId: "ar_browser",
         createdAt: minutesAgo(7),
       },
     ],
@@ -180,7 +184,7 @@ export function createDemoDashboard(): Dashboard {
         { id: "node_invite", kind: "endpoint", label: "/api/invitations/accept", subtitle: "POST · authorization path", severity: "high", status: "finding", metadata: {}, discoveredBy: "Source review", createdAt: minutesAgo(6) },
         { id: "node_repo", kind: "repository", label: "northstar/web", subtitle: "main · 8f31c2a", status: "reviewing", metadata: {}, discoveredBy: "Orchestrator", createdAt: minutesAgo(10) },
         { id: "node_admin", kind: "subdomain", label: "admin.northstar.test", subtitle: "Outside current scope", status: "scope-review", metadata: {}, discoveredBy: "Explorer", createdAt: minutesAgo(5) },
-        { id: "node_finding", kind: "finding", label: "Stale invitation token", subtitle: "High severity", severity: "high", status: "confirmed", metadata: { findingId: "finding_1" }, discoveredBy: "Source review", createdAt: minutesAgo(5) },
+        { id: "node_finding", kind: "finding", label: "Stale invitation token", subtitle: "High severity", severity: "high", status: "confirmed", metadata: { findingId: "finding_1", agentRunId: "ar_source" }, discoveredBy: "Source review", createdAt: minutesAgo(5) },
       ],
       edges: [
         { id: "edge_1", source: "node_app", target: "node_443", relationship: "exposes", metadata: {} },

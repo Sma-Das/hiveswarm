@@ -102,4 +102,23 @@ describe("OrchestratorService", () => {
       finding: { title: "Unapproved finding", severity: "low", status: "open", confidence: 0.5, assetLabel: "test", summary: "This event should be rejected.", evidence: [], discoveredBy: "Explorer" },
     })).rejects.toThrow(/finding\.write/i);
   });
+
+  it("assigns finding provenance from the stored execution", async () => {
+    await service.ingest("ar_browser", {
+      type: "finding",
+      finding: {
+        title: "Locally attributed finding",
+        severity: "low",
+        status: "open",
+        confidence: 0.8,
+        assetLabel: "/login",
+        summary: "A bounded test finding.",
+        evidence: ["Observed in the test fixture"],
+        discoveredBy: "Untrusted display name",
+        agentRunId: "ar_source",
+      },
+    });
+    const finding = (await store.getDashboard()).findings.find((item) => item.title === "Locally attributed finding");
+    expect(finding?.agentRunId).toBe("ar_browser");
+  });
 });

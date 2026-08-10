@@ -37,7 +37,7 @@ The materialized evidence model supports several connected projections instead o
 - scope connects allow/deny rules and explorer proposals awaiting human review;
 - finding paths walk backward through supporting evidence and open in a side drawer with the underlying structured node data.
 
-These are views over the same typed nodes, edges, executions, and finding records, so selecting a finding can move from execution provenance to its application attack path without duplicating evidence.
+These are views over the same typed nodes, edges, executions, and finding records. Finding provenance is assigned from the authenticated agent run during ingestion, never reconstructed from a specialist-supplied display name. A shared pure evidence module derives swarm ownership, finding paths, and report attack paths from those relationships, so selecting a finding can move from exact execution provenance to its application attack path without duplicating evidence.
 
 ## Agent tree and lifecycle
 

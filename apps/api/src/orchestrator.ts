@@ -203,9 +203,9 @@ export class OrchestratorService {
       dashboard.graph.edges.push({ ...event.edge, source: resolveRef(event.edge.source), target: resolveRef(event.edge.target), id: id("edge") });
     } else if (event.type === "finding") {
       const findingId = id("finding");
-      dashboard.findings.unshift({ ...event.finding, id: findingId, createdAt: timestamp });
+      dashboard.findings.unshift({ ...event.finding, id: findingId, agentRunId: agentRun.id, createdAt: timestamp });
       const findingNodeId = id("node");
-      dashboard.graph.nodes.push({ id: findingNodeId, kind: "finding", label: event.finding.title, subtitle: event.finding.assetLabel, severity: event.finding.severity, status: event.finding.status, metadata: { findingId }, discoveredBy: event.finding.discoveredBy, createdAt: timestamp });
+      dashboard.graph.nodes.push({ id: findingNodeId, kind: "finding", label: event.finding.title, subtitle: event.finding.assetLabel, severity: event.finding.severity, status: event.finding.status, metadata: { findingId, agentRunId: agentRun.id }, discoveredBy: event.finding.discoveredBy, createdAt: timestamp });
       const asset = dashboard.graph.nodes.find((node) => node.kind !== "finding" && (node.label === event.finding.assetLabel || node.metadata.url === event.finding.assetLabel));
       if (asset) dashboard.graph.edges.push({ id: id("edge"), source: asset.id, target: findingNodeId, relationship: "affected_by", metadata: {} });
     } else if (event.type === "artifact") {

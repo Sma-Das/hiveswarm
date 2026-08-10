@@ -132,6 +132,7 @@ export const findingSchema = z.object({
   evidence: z.array(z.string()).default([]),
   remediation: z.string().optional(),
   discoveredBy: z.string(),
+  agentRunId: z.string().optional(),
   createdAt: z.string(),
 });
 export type Finding = z.infer<typeof findingSchema>;
@@ -266,7 +267,7 @@ export const agentEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("log"), level: z.enum(["debug", "info", "warn", "error"]), message: z.string() }),
   z.object({ type: z.literal("node"), ref: z.string().min(1).max(200).optional(), node: graphNodeSchema.omit({ id: true, createdAt: true }) }),
   z.object({ type: z.literal("edge"), edge: graphEdgeSchema.omit({ id: true }) }),
-  z.object({ type: z.literal("finding"), finding: findingSchema.omit({ id: true, createdAt: true }) }),
+  z.object({ type: z.literal("finding"), finding: findingSchema.omit({ id: true, agentRunId: true, createdAt: true }) }),
   z.object({
     type: z.literal("artifact"),
     artifact: artifactSchema.omit({ id: true, agentRunId: true, createdAt: true }),
@@ -278,3 +279,5 @@ export const agentEventSchema = z.discriminatedUnion("type", [
   }),
 ]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
+
+export * from "./evidence";
