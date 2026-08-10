@@ -7,6 +7,8 @@ import type { StateStore } from "./store.js";
 
 export interface ExecutionDriver {
   dispatch(agentRun: AgentRun): Promise<void>;
+  terminate(agentRun: AgentRun): Promise<void>;
+  controlRun(runId: string, action: "pause" | "resume", agentRunIds: string[]): Promise<void>;
   close?(): Promise<void>;
 }
 
@@ -28,15 +30,20 @@ export class SimulatedExecutionDriver implements ExecutionDriver {
     await this.store.saveDashboard(dashboard);
     this.events.publish({ id: id("evt"), type: "agent.started", runId: current.runId, occurredAt: new Date().toISOString(), data: { agentRunId: current.id } });
   }
+
+  async terminate() {}
+  async controlRun() {}
 }
 
 export class QueueExecutionDriver implements ExecutionDriver {
   private readonly connection: IORedis;
   private readonly queue: Queue;
+  private readonly controlQueue: Queue;
 
   constructor(redisUrl: string) {
     this.connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
     this.queue = new Queue("hiveswarm-agent-executions", { connection: this.connection });
+    this.controlQueue = new Queue("hiveswarm-agent-control", { connection: this.connection });
   }
 
   async dispatch(agentRun: AgentRun): Promise<void> {
@@ -49,7 +56,21 @@ export class QueueExecutionDriver implements ExecutionDriver {
     });
   }
 
+  async terminate(agentRun: AgentRun): Promise<void> {
+    const queued = await this.queue.getJob(agentRun.id);
+    if (queued) {
+      const state = await queued.getState();
+      if (state === "waiting" || state === "delayed") await queued.remove();
+    }
+    await this.controlQueue.add("terminate-agent", { runId: agentRun.runId, agentRunIds: [agentRun.id], action: "terminate" }, { removeOnComplete: 500 });
+  }
+
+  async controlRun(runId: string, action: "pause" | "resume", agentRunIds: string[]): Promise<void> {
+    await this.controlQueue.add(`${action}-run`, { runId, agentRunIds, action }, { removeOnComplete: 500 });
+  }
+
   async close() {
+    await this.controlQueue.close();
     await this.queue.close();
     await this.connection.quit();
   }

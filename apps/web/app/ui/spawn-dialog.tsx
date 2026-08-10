@@ -40,11 +40,11 @@ export function SpawnDialog({ open, agents, parentAgents, target, onClose, onSpa
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} strokeWidth={1.5} aria-hidden="true" /></button>
         </div>
         <div className="form-grid">
-          <label>Specialist<select name="agentId" required defaultValue="explorer">{agents.filter((agent) => agent.id !== "orchestrator").map((agent) => <option key={`${agent.id}-${agent.version}`} value={agent.id}>{agent.name}</option>)}</select></label>
-          <label>Lifecycle<select name="lifecycle" required defaultValue="task"><option value="task">Task · exits when complete</option><option value="session">Session · remains available</option></select></label>
-          <label>Parent agent<select name="parentAgentRunId" defaultValue="ar_orchestrator"><option value="">Orchestrator root</option>{parentAgents.filter((agent) => agent.depth < 5).map((agent) => <option key={agent.id} value={agent.id}>{"· ".repeat(agent.depth)}{agent.agentName}</option>)}</select></label>
-          <label>Target<input name="target" defaultValue={target} required /></label>
-          <label className="form-grid__wide">Task<textarea name="task" rows={4} required defaultValue="Map the authorized application surface and return structured evidence." /></label>
+          <label>Specialist<select name="agentId" aria-label="Specialist" required defaultValue="explorer">{agents.filter((agent) => agent.id !== "orchestrator").map((agent) => <option key={`${agent.id}-${agent.version}`} value={agent.id}>{agent.name}</option>)}</select></label>
+          <label>Lifecycle<select name="lifecycle" aria-label="Specialist lifecycle" required defaultValue="task"><option value="task">Task · exits when complete</option><option value="session">Session · remains available</option></select></label>
+          <label>Parent agent<select name="parentAgentRunId" aria-label="Parent agent" defaultValue={parentAgents.find((agent) => agent.depth === 0)?.id ?? ""}><option value="">Orchestrator root</option>{parentAgents.filter((agent) => agent.depth < 5).map((agent) => <option key={agent.id} value={agent.id}>{"· ".repeat(agent.depth)}{agent.agentName}</option>)}</select></label>
+          <label>Target<input name="target" aria-label="Specialist target" defaultValue={target} required /></label>
+          <label className="form-grid__wide">Task<textarea name="task" aria-label="Specialist task" rows={4} required defaultValue="Map the authorized application surface and return structured evidence." /></label>
         </div>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         <div className="dialog__actions"><button type="button" className="button button--quiet" onClick={onClose}>Cancel</button><button className="button button--primary" disabled={busy}>{busy ? "Starting specialist" : "Start specialist"}</button></div>

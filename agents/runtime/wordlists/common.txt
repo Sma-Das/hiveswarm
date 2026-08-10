@@ -1,0 +1,14 @@
+admin
+api
+assets
+auth
+dashboard
+graphql
+health
+login
+logout
+robots.txt
+sitemap.xml
+static
+uploads
+.well-known

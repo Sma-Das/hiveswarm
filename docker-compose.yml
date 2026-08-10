@@ -42,11 +42,14 @@ services:
       AGENT_CALLBACK_TOKEN: ${AGENT_CALLBACK_TOKEN:-development-only-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
+      ARTIFACT_PATH: /artifacts
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     ports:
       - "4100:4100"
+    volumes:
+      - artifact-data:/artifacts:ro
     networks: [control]
 
   worker:
@@ -60,6 +63,10 @@ services:
       AGENT_CALLBACK_TOKEN: ${AGENT_CALLBACK_TOKEN:-development-only-change-me}
       WORKER_MODE: simulated
       WORKER_CONCURRENCY: 3
+      ARTIFACT_VOLUME: hiveswarm-artifacts
+      BURP_VOLUME: hiveswarm-burp
+      HIVESWARM_SOURCE_ROOT: ${HIVESWARM_SOURCE_ROOT:-}
+      BURP_LICENSE_KEY: ${BURP_LICENSE_KEY:-}
     depends_on:
       redis: { condition: service_healthy }
       api: { condition: service_started }
@@ -80,6 +87,10 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  artifact-data:
+    name: hiveswarm-artifacts
+  burp-data:
+    name: hiveswarm-burp
 
 networks:
   control:

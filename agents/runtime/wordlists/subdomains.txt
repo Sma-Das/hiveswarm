@@ -1,0 +1,11 @@
+api
+app
+admin
+auth
+cdn
+dev
+docs
+internal
+staging
+static
+www

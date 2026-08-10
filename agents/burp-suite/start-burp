@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+event() {
+  level="$1"
+  message="$2"
+  escaped=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  printf '{"type":"log","level":"%s","message":"%s"}\n' "$level" "$escaped"
+}
+
+BURP_JAR_PATH="${BURP_JAR_PATH:-/opt/burp/burp.jar}"
+if [ ! -f "$BURP_JAR_PATH" ]; then
+  event error "Burp JAR not found at $BURP_JAR_PATH. Download the current unified JAR from PortSwigger, accept its license, and place it in the hiveswarm-burp volume."
+  exit 2
+fi
+
+if [ -n "${BURP_LICENSE_KEY:-}" ]; then
+  umask 077
+  printf '%s' "$BURP_LICENSE_KEY" > /opt/burp/license-key.txt
+  event info "A Pro license key was staged in the private Burp volume for the supported first-run activation wizard."
+else
+  event info "Starting the unified Burp desktop JAR in Community-compatible mode after operator setup."
+fi
+
+mkdir -p /opt/burp/home
+event info "Burp is starting in headless proxy mode; use trusted mounted user/project configuration to control listeners, scope, and persistence."
+exec java -Djava.awt.headless=true -Duser.home=/opt/burp/home -Xmx3g -jar "$BURP_JAR_PATH" ${BURP_ARGS:---disable-extensions}

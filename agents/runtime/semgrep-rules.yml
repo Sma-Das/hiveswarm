@@ -1,0 +1,28 @@
+rules:
+  - id: hiveswarm.javascript.dynamic-code-execution
+    message: User-influenced dynamic code execution can cross a critical trust boundary.
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+    metadata:
+      category: security
+      confidence: high
+  - id: hiveswarm.javascript.weak-random-token
+    message: Math.random is not suitable for security-sensitive identifiers or tokens.
+    severity: WARNING
+    languages: [javascript, typescript]
+    pattern: Math.random()
+    metadata:
+      category: security
+      confidence: medium
+  - id: hiveswarm.python.shell-true
+    message: Shell command execution can enable injection when arguments include untrusted data.
+    severity: ERROR
+    languages: [python]
+    pattern: subprocess.$FUNC(..., shell=True, ...)
+    metadata:
+      category: security
+      confidence: high

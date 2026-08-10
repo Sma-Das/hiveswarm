@@ -146,6 +146,7 @@ export const approvalSchema = z.object({
   requestedAction: z.string(),
   requestedBy: z.string(),
   createdAt: z.string(),
+  context: z.record(z.string(), z.unknown()).default({}),
 });
 export type Approval = z.infer<typeof approvalSchema>;
 
@@ -175,6 +176,18 @@ export const logEntrySchema = z.object({
 });
 export type LogEntry = z.infer<typeof logEntrySchema>;
 
+export const artifactSchema = z.object({
+  id: z.string(),
+  agentRunId: z.string(),
+  kind: z.enum(["screenshot", "http_capture", "source_evidence", "scan_output", "report"]),
+  name: z.string(),
+  uri: z.string(),
+  mimeType: z.string(),
+  sha256: z.string().optional(),
+  createdAt: z.string(),
+});
+export type Artifact = z.infer<typeof artifactSchema>;
+
 export const dashboardSchema = z.object({
   engagement: z.object({
     id: z.string(),
@@ -195,6 +208,7 @@ export const dashboardSchema = z.object({
   approvals: z.array(approvalSchema),
   graph: z.object({ nodes: z.array(graphNodeSchema), edges: z.array(graphEdgeSchema) }),
   logs: z.array(logEntrySchema),
+  artifacts: z.array(artifactSchema),
 });
 export type Dashboard = z.infer<typeof dashboardSchema>;
 
@@ -219,11 +233,26 @@ export const approvalDecisionSchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+export const orchestrateRequestSchema = z.object({
+  objective: z.string().min(8).max(4000).optional(),
+  maxTurns: z.number().int().min(1).max(8).default(6),
+  maxAgents: z.number().int().min(1).max(12).default(8),
+});
+export type OrchestrateRequest = z.infer<typeof orchestrateRequestSchema>;
+
 export const agentEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("log"), level: z.enum(["debug", "info", "warn", "error"]), message: z.string() }),
-  z.object({ type: z.literal("node"), node: graphNodeSchema.omit({ id: true, createdAt: true }) }),
+  z.object({ type: z.literal("node"), ref: z.string().min(1).max(200).optional(), node: graphNodeSchema.omit({ id: true, createdAt: true }) }),
   z.object({ type: z.literal("edge"), edge: graphEdgeSchema.omit({ id: true }) }),
   z.object({ type: z.literal("finding"), finding: findingSchema.omit({ id: true, createdAt: true }) }),
+  z.object({
+    type: z.literal("artifact"),
+    artifact: artifactSchema.omit({ id: true, agentRunId: true, createdAt: true }),
+  }),
   z.object({ type: z.literal("scope_proposal"), value: z.string(), kind: scopeRuleSchema.shape.kind, rationale: z.string() }),
+  z.object({
+    type: z.literal("spawn_request"),
+    request: spawnAgentRequestSchema.omit({ parentAgentRunId: true }),
+  }),
 ]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;

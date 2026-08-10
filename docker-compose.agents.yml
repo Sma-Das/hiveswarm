@@ -1,0 +1,50 @@
+services:
+  agent-orchestrator:
+    image: hiveswarm/orchestrator:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: orchestrator }
+    profiles: [agents]
+  agent-explorer:
+    image: hiveswarm/explorer:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: explorer }
+    profiles: [agents]
+  agent-browser-user:
+    image: hiveswarm/browser-user:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: browser-user }
+    profiles: [agents]
+  agent-burp-suite:
+    image: hiveswarm/burp-suite:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: burp-suite }
+    profiles: [agents]
+    volumes: [burp-data:/opt/burp]
+  agent-source-review:
+    image: hiveswarm/source-review:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: source-review }
+    profiles: [agents]
+  agent-semgrep:
+    image: hiveswarm/semgrep:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: semgrep }
+    profiles: [agents]
+  agent-trufflehog:
+    image: hiveswarm/trufflehog:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: trufflehog }
+    profiles: [agents]
+  agent-directory-enumerator:
+    image: hiveswarm/directory-enumerator:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: directory-enumerator }
+    profiles: [agents]
+  agent-port-scanner:
+    image: hiveswarm/port-scanner:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: port-scanner }
+    profiles: [agents]
+  agent-subdomain-enumerator:
+    image: hiveswarm/subdomain-enumerator:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: subdomain-enumerator }
+    profiles: [agents]
+  agent-reporter:
+    image: hiveswarm/reporter:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: reporter }
+    profiles: [agents]
+
+volumes:
+  burp-data:
+    name: hiveswarm-burp

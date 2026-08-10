@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "semgrep",
+  "name": "Semgrep",
+  "version": "0.1.0",
+  "description": "Runs bundled, offline static-analysis rules against a mounted authorized repository and emits evidence-backed matches.",
+  "role": "static-analysis",
+  "image": "hiveswarm/semgrep:dev",
+  "command": ["python3", "/agent/scan.py"],
+  "lifecycle": ["task"],
+  "capabilities": ["source.read", "source.scan", "finding.write"],
+  "skills": ["semgrep", "offline-rules", "code-pattern-analysis"],
+  "accepts": ["repository", "rule-pack"],
+  "emits": ["code-location", "finding"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "runtime": "ephemeral", "delegated-by": "source-review" }
+}

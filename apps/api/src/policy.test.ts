@@ -29,4 +29,15 @@ describe("PolicyEngine", () => {
     const request = spawnAgentRequestSchema.parse({ agentId: "test-agent", lifecycle: "task", task: "Attempt another recursive task", target: "app.northstar.test", parentAgentRunId: "parent", requestedCapabilities: [] });
     expect(policy.evaluate(dashboard, manifest, request)).toMatchObject({ allowed: false, reason: "Recursive agent depth cannot exceed five." });
   });
+  it("matches IPv4 and IPv6 CIDR boundaries", () => {
+    const dashboard = createDemoDashboard();
+    dashboard.engagement.scopeRules = [
+      { id: "v4", kind: "cidr", value: "10.20.0.0/16", action: "allow" },
+      { id: "v6", kind: "cidr", value: "2001:db8::/32", action: "allow" },
+    ];
+    const request4 = spawnAgentRequestSchema.parse({ agentId: "test-agent", lifecycle: "task", task: "Inspect the approved IPv4 host", target: "10.20.4.9", requestedCapabilities: [] });
+    const request6 = spawnAgentRequestSchema.parse({ agentId: "test-agent", lifecycle: "task", task: "Inspect the approved IPv6 host", target: "http://[2001:db8::25]", requestedCapabilities: [] });
+    expect(policy.evaluate(dashboard, manifest, request4)).toMatchObject({ allowed: true });
+    expect(policy.evaluate(dashboard, manifest, request6)).toMatchObject({ allowed: true });
+  });
 });

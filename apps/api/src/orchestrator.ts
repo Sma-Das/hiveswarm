@@ -14,6 +14,7 @@ import type { StateStore } from "./store.js";
 
 export class OrchestratorService {
   private readonly policy = new PolicyEngine();
+  private mutationTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly store: StateStore,
@@ -22,8 +23,23 @@ export class OrchestratorService {
     private readonly events: EventBus,
   ) {}
 
+  private async serial<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.mutationTail;
+    let release = () => {};
+    this.mutationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try { return await work(); }
+    finally { release(); }
+  }
+
   async spawn(request: SpawnAgentRequest): Promise<{ agentRun: AgentRun; approvalRequired: boolean }> {
+    return this.serial(() => this.spawnUnsafe(request));
+  }
+
+  private async spawnUnsafe(request: SpawnAgentRequest): Promise<{ agentRun: AgentRun; approvalRequired: boolean }> {
     const dashboard = await this.store.getDashboard();
+    if (dashboard.engagement.status === "paused") throw new Error("The engagement is paused; resume it before starting another agent.");
+    if (["completed", "failed", "cancelled"].includes(dashboard.engagement.status)) throw new Error("The engagement is not active.");
     const manifest = await this.registry.get(request.agentId);
     if (!manifest) throw new Error(`Agent ${request.agentId} is not installed or enabled.`);
     const decision = this.policy.evaluate(dashboard, manifest, request);
@@ -32,7 +48,7 @@ export class OrchestratorService {
       ? decision.depth
       : (parent ? (dashboard.agents.find((agent) => agent.id === parent)?.depth ?? 0) + 1 : 1);
     const agentRun: AgentRun = {
-      id: id("ar"), runId: "run_demo", parentAgentRunId: parent, agentId: manifest.id, agentName: manifest.name,
+      id: id("ar"), runId: dashboard.agents[0]?.runId ?? dashboard.engagement.id, parentAgentRunId: parent, agentId: manifest.id, agentName: manifest.name,
       lifecycle: request.lifecycle, status: decision.allowed ? "queued" : "waiting_approval", depth,
       task: request.task, target: request.target, startedAt: null, completedAt: null, logCount: 0,
     };
@@ -48,6 +64,7 @@ export class OrchestratorService {
           ? dashboard.agents.find((agent) => agent.id === request.parentAgentRunId)?.agentName ?? "Orchestrator"
           : "Orchestrator",
         createdAt: new Date().toISOString(),
+        context: { kind: "agent_spawn" },
       });
       dashboard.engagement.status = "waiting_approval";
     }
@@ -60,26 +77,56 @@ export class OrchestratorService {
   }
 
   async decideApproval(approvalId: string, decision: "approved" | "denied", note?: string) {
+    return this.serial(() => this.decideApprovalUnsafe(approvalId, decision, note));
+  }
+
+  private async decideApprovalUnsafe(approvalId: string, decision: "approved" | "denied", note?: string) {
     const dashboard = await this.store.getDashboard();
+    const wasPaused = dashboard.engagement.status === "paused";
     const approval = dashboard.approvals.find((item) => item.id === approvalId);
     if (!approval || approval.status !== "pending") throw new Error("Pending approval not found.");
     approval.status = decision;
     const agentRun = approval.agentRunId ? dashboard.agents.find((agent) => agent.id === approval.agentRunId) : undefined;
-    if (agentRun) agentRun.status = decision === "approved" ? "queued" : "terminated";
-    dashboard.engagement.status = dashboard.approvals.some((item) => item.status === "pending") ? "waiting_approval" : "running";
+    const isScopeProposal = approval.context.kind === "scope_proposal";
+    if (isScopeProposal && decision === "approved") {
+      const kind = approval.context.scopeKind;
+      const value = approval.context.scopeValue;
+      if (typeof kind === "string" && typeof value === "string" && !dashboard.engagement.scopeRules.some((rule) => rule.action === "allow" && rule.kind === kind && rule.value === value)) {
+        dashboard.engagement.scopeRules = dashboard.engagement.scopeRules.filter((rule) => !(rule.action === "deny" && rule.kind === kind && rule.value === value));
+        dashboard.engagement.scopeRules.push({ id: id("scope"), kind: kind as "host" | "domain" | "cidr" | "url-prefix" | "repository", value, action: "allow" });
+      }
+      if (agentRun?.status === "waiting_approval") agentRun.status = "running";
+    } else if (agentRun) {
+      agentRun.status = decision === "approved" ? "queued" : "terminated";
+      if (decision === "denied") agentRun.completedAt = new Date().toISOString();
+    }
+    dashboard.engagement.status = dashboard.approvals.some((item) => item.status === "pending") ? "waiting_approval" : wasPaused ? "paused" : "running";
     this.refreshMetrics(dashboard);
     await this.store.saveDashboard(dashboard);
     await this.store.appendAudit({ id: id("audit"), actor: "human", action: `approval.${decision}`, resource: approvalId, detail: { note: note ?? "" }, createdAt: new Date().toISOString() });
     this.events.publish({ id: id("evt"), type: `approval.${decision}`, runId: approval.runId, occurredAt: new Date().toISOString(), data: { approvalId } });
-    if (decision === "approved" && agentRun) await this.executor.dispatch(agentRun);
+    if (decision === "approved" && agentRun && !isScopeProposal && !wasPaused) await this.executor.dispatch(agentRun);
     return approval;
   }
 
   async ingest(agentRunId: string, input: unknown) {
+    return this.serial(() => this.ingestUnsafe(agentRunId, input));
+  }
+
+  private async ingestUnsafe(agentRunId: string, input: unknown): Promise<unknown> {
     const event = agentEventSchema.parse(input);
     const dashboard = await this.store.getDashboard();
     const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId);
     if (!agentRun) throw new Error("Agent execution not found.");
+    if (["completed", "failed", "terminated"].includes(agentRun.status)) throw new Error("Agent execution is no longer active.");
+    if (agentRun.status === "queued" || agentRun.status === "starting") {
+      agentRun.status = "running";
+      agentRun.startedAt ??= new Date().toISOString();
+    }
+    if (event.type === "spawn_request") {
+      await this.store.saveDashboard(dashboard);
+      return this.spawnUnsafe({ ...event.request, parentAgentRunId: agentRun.id });
+    }
     this.applyEvent(dashboard, agentRun, event);
     this.refreshMetrics(dashboard);
     await this.store.saveDashboard(dashboard);
@@ -88,9 +135,14 @@ export class OrchestratorService {
   }
 
   async complete(agentRunId: string, outcome: "completed" | "failed", message?: string) {
+    return this.serial(() => this.completeUnsafe(agentRunId, outcome, message));
+  }
+
+  private async completeUnsafe(agentRunId: string, outcome: "completed" | "failed", message?: string) {
     const dashboard = await this.store.getDashboard();
     const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId);
     if (!agentRun) throw new Error("Agent execution not found.");
+    if (agentRun.status === "terminated") return agentRun;
     agentRun.status = outcome;
     agentRun.completedAt = new Date().toISOString();
     if (message) {
@@ -103,22 +155,76 @@ export class OrchestratorService {
     return agentRun;
   }
 
+  async terminate(agentRunId: string) {
+    return this.serial(() => this.terminateUnsafe(agentRunId));
+  }
+
+  private async terminateUnsafe(agentRunId: string) {
+    const dashboard = await this.store.getDashboard();
+    const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId);
+    if (!agentRun) throw new Error("Agent execution not found.");
+    if (["completed", "failed", "terminated"].includes(agentRun.status)) return agentRun;
+    agentRun.status = "terminated";
+    agentRun.completedAt = new Date().toISOString();
+    dashboard.logs.unshift({ id: id("log"), agentRunId, level: "warn", message: "Execution terminated by a human operator.", timestamp: agentRun.completedAt });
+    agentRun.logCount += 1;
+    this.refreshMetrics(dashboard);
+    await this.store.saveDashboard(dashboard);
+    await this.executor.terminate(agentRun);
+    await this.store.appendAudit({ id: id("audit"), actor: "human", action: "agent.terminated", resource: agentRun.id, detail: {}, createdAt: agentRun.completedAt });
+    this.events.publish({ id: id("evt"), type: "agent.terminated", runId: agentRun.runId, occurredAt: agentRun.completedAt, data: { agentRunId } });
+    return agentRun;
+  }
+
+  async setRunState(runId: string, status: "running" | "paused") {
+    return this.serial(() => this.setRunStateUnsafe(runId, status));
+  }
+
+  private async setRunStateUnsafe(runId: string, status: "running" | "paused") {
+    const dashboard = await this.store.getDashboard();
+    if (dashboard.agents.length && dashboard.agents.every((agent) => agent.runId !== runId)) throw new Error("Run not found.");
+    dashboard.engagement.status = status;
+    const controllable = dashboard.agents.filter((agent) => ["running", "starting", "waiting_approval"].includes(agent.status));
+    await this.store.saveDashboard(dashboard);
+    await this.executor.controlRun(runId, status === "paused" ? "pause" : "resume", controllable.map((agent) => agent.id));
+    if (status === "running") {
+      const latest = await this.store.getDashboard();
+      const queuedAgents = latest.agents.filter((agent) => agent.status === "queued");
+      for (const queued of queuedAgents) queued.status = "starting";
+      if (queuedAgents.length) await this.store.saveDashboard(latest);
+      for (const queued of queuedAgents) await this.executor.dispatch(queued);
+    }
+    await this.store.appendAudit({ id: id("audit"), actor: "human", action: `run.${status}`, resource: runId, detail: {}, createdAt: new Date().toISOString() });
+    this.events.publish({ id: id("evt"), type: `run.${status}`, runId, occurredAt: new Date().toISOString(), data: {} });
+    return { status };
+  }
+
   private applyEvent(dashboard: Dashboard, agentRun: AgentRun, event: AgentEvent) {
     const timestamp = new Date().toISOString();
+    if (event.type === "spawn_request") return;
     if (event.type === "log") {
       dashboard.logs.unshift({ id: id("log"), agentRunId: agentRun.id, level: event.level, message: event.message, timestamp });
       agentRun.logCount += 1;
     } else if (event.type === "node") {
-      dashboard.graph.nodes.push({ ...event.node, id: id("node"), createdAt: timestamp });
+      dashboard.graph.nodes.push({ ...event.node, id: id("node"), metadata: { ...event.node.metadata, ...(event.ref ? { agentRef: event.ref } : {}), agentRunId: agentRun.id }, createdAt: timestamp });
     } else if (event.type === "edge") {
-      dashboard.graph.edges.push({ ...event.edge, id: id("edge") });
+      const resolveRef = (value: string) => dashboard.graph.nodes.find((node) => node.metadata.agentRunId === agentRun.id && node.metadata.agentRef === value)?.id ?? value;
+      dashboard.graph.edges.push({ ...event.edge, source: resolveRef(event.edge.source), target: resolveRef(event.edge.target), id: id("edge") });
     } else if (event.type === "finding") {
-      dashboard.findings.unshift({ ...event.finding, id: id("finding"), createdAt: timestamp });
+      const findingId = id("finding");
+      dashboard.findings.unshift({ ...event.finding, id: findingId, createdAt: timestamp });
+      const findingNodeId = id("node");
+      dashboard.graph.nodes.push({ id: findingNodeId, kind: "finding", label: event.finding.title, subtitle: event.finding.assetLabel, severity: event.finding.severity, status: event.finding.status, metadata: { findingId }, discoveredBy: event.finding.discoveredBy, createdAt: timestamp });
+      const asset = dashboard.graph.nodes.find((node) => node.kind !== "finding" && (node.label === event.finding.assetLabel || node.metadata.url === event.finding.assetLabel));
+      if (asset) dashboard.graph.edges.push({ id: id("edge"), source: asset.id, target: findingNodeId, relationship: "affected_by", metadata: {} });
+    } else if (event.type === "artifact") {
+      dashboard.artifacts.unshift({ ...event.artifact, id: id("artifact"), agentRunId: agentRun.id, createdAt: timestamp });
     } else {
       dashboard.approvals.unshift({
         id: id("approval"), runId: agentRun.runId, agentRunId: agentRun.id, type: "scope_expansion", status: "pending",
         title: `Review ${event.value}`, rationale: event.rationale, requestedAction: `Add ${event.value} as an allowed ${event.kind}.`,
         requestedBy: agentRun.agentName, createdAt: timestamp,
+        context: { kind: "scope_proposal", scopeKind: event.kind, scopeValue: event.value },
       });
       agentRun.status = "waiting_approval";
       dashboard.engagement.status = "waiting_approval";

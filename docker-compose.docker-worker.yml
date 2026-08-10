@@ -6,7 +6,7 @@ services:
       AGENT_NETWORK: hiveswarm-agent-egress
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    networks: [control]
+    networks: [control, agent-egress]
 
 networks:
   agent-egress:

@@ -1,19 +1,18 @@
 # HiveSwarm
 
-HiveSwarm is a human-governed, multi-agent application security evaluation platform. An agnostic orchestrator selects swappable specialist agents, preserves scope, and turns their evidence into an explorable asset and attack-path graph.
+HiveSwarm is a human-governed, multi-agent application-security evaluation platform. A provider-neutral orchestrator discovers swappable specialist packages, applies scope and capability policy, runs their containers, and turns typed evidence into an explorable asset and vulnerability-path graph.
 
-The first vertical slice includes:
+This repository implements the core vertical slice:
 
-- versioned specialist registration and installation;
-- task and session lifecycles with recursive spawning to depth five;
-- explicit scope and capability enforcement with human approval gates;
-- Redis-backed dispatch and isolated worker/container boundaries;
-- PostgreSQL snapshots, package versions, and audit events;
-- typed logs, assets, relationships, findings, and scope proposals;
-- a live Next.js console for swarm state, evidence graphs, findings, activity, and approvals;
-- built-in manifests for Explorer, browser use, Burp Suite, source review, directory enumeration, port scanning, subdomain/vhost discovery, and reporting.
+- model-directed orchestration through a provider interface, with OpenAI Responses function calling first and a deterministic offline fallback;
+- versioned runtime installation and discovery for 11 agents;
+- task and session lifecycles, pause/resume/terminate controls, and recursive spawning to depth five;
+- deny-by-default target policy, one-time human approval gates, audit events, bounded scan settings, and authenticated worker callbacks;
+- real adapters for Playwright, Nmap, Gobuster, Semgrep, TruffleHog, and a license-safe bring-your-own-JAR Burp runtime;
+- PostgreSQL persistence, Redis dispatch, isolated Docker execution, SSE updates, and artifact storage;
+- a responsive Next.js console for the live swarm, searchable evidence graph, logs, findings, scope, registry, approvals, and Markdown reports.
 
-## Run locally
+## Local preview
 
 Requirements: Node.js 20.17+ or 22.9+ and npm. Node.js 21 is not supported by the current npm/Vitest toolchain.
 
@@ -23,42 +22,59 @@ cp .env.example .env
 npm run dev
 ```
 
-The console is at `http://localhost:3000`; the API is at `http://localhost:4100`. Local development defaults to in-memory persistence and simulated execution, while preserving the full API flow.
+Open `http://localhost:3000`. The API runs at `http://localhost:4100`. Local development intentionally uses in-memory state and simulated execution, so the complete policy and UI flow can be evaluated without granting Docker authority or scanning a target.
 
-## Run the complete stack
+## Complete stack
 
-```sh
-docker compose up --build
-```
-
-Compose enables PostgreSQL, Redis, the queued execution worker, API, and console. The worker defaults to simulation so the stack does not receive Docker host authority accidentally.
-
-To opt into real local agent containers, review the security implications of Docker socket access, install/tag the images referenced by the manifests, add a policy-aware egress gateway, and then run:
+Copy `.env.example` to `.env`, replace the development callback token and database password, and optionally provide `OPENAI_API_KEY`. Then build the specialist images and start the control plane:
 
 ```sh
+docker compose -f docker-compose.agents.yml --profile agents build
 docker compose -f docker-compose.yml -f docker-compose.docker-worker.yml up --build
 ```
 
-The override intentionally makes a material trust-boundary change. Do not use an unrestricted Docker socket or unrestricted egress in a shared production environment.
+The Docker worker override grants the worker access to the Docker socket. That is a material host-level trust boundary: use a dedicated machine or rootless/remote worker, review installed manifests and images, and place the agent network behind an allowlist-aware egress gateway before shared or production deployment.
+
+Without the Docker override, `docker compose up --build` runs PostgreSQL, Redis, API, console, and a simulated worker.
+
+## Built-in specialists
+
+| Agent | Lifecycle | Runtime |
+| --- | --- | --- |
+| Explorer | task or session | rendered Playwright discovery and human scope proposals |
+| Browser user | task or session | browser workflows and screenshots |
+| Burp Suite | session | headless proxy using an operator-supplied Community/Pro JAR |
+| Source review | task or session | business-logic triage; delegates Semgrep and TruffleHog |
+| Semgrep | task | bundled offline SAST rules |
+| TruffleHog | task | redacted secret evidence |
+| Directory enumerator | task | rate-bounded Gobuster paths |
+| Port scanner | task | rate-bounded Nmap service discovery |
+| Subdomain/vhost enumerator | task | bounded Gobuster DNS discovery |
+| Reporter | task or session | artifact and live report coordination |
+| Orchestrator | session | registry-aware evaluation manager |
+
+Source agents use targets such as `repository:team/service`. Set `HIVESWARM_SOURCE_ROOT` to the absolute host directory containing those repositories; the worker rejects path traversal and mounts only the selected repository read-only.
 
 ## Configuration
 
 - `STORAGE_DRIVER`: `memory` or `postgres`.
 - `EXECUTION_DRIVER`: `simulated` or `queue`.
 - `WORKER_MODE`: `simulated` or `docker`.
-- `OPENAI_API_KEY`: optional; enables model-planned agent selection.
+- `OPENAI_API_KEY`: optional; activates model-directed orchestration.
 - `OPENAI_MODEL`: defaults to `gpt-5.6-terra`.
-- `BURP_LICENSE_KEY`: optional Pro automation credential; Community remains interactive.
 - `AGENT_CALLBACK_TOKEN`: separate secret for worker-to-API evidence callbacks.
+- `HIVESWARM_SOURCE_ROOT`: authorized host root for `repository:` targets.
+- `BURP_LICENSE_KEY`: optional key staged privately for Burp's supported first-run Pro activation; activation is not bypassed or automated.
 
-Read [architecture](docs/architecture.md) for trust boundaries and [agent packages](docs/agent-packages.md) for the plugin contract.
+See [architecture](docs/architecture.md), [agent packages](docs/agent-packages.md), and [operations](docs/operations.md).
 
-## Development checks
+## Verification
 
 ```sh
 npm run typecheck
 npm test
 npm run build
+docker compose -f docker-compose.yml -f docker-compose.docker-worker.yml -f docker-compose.agents.yml --profile agents config --quiet
 ```
 
-Only test systems you own or are explicitly authorized to assess. Scope rules and approval gates reduce mistakes but do not replace written authorization, rate limits, data-handling requirements, or operator judgment.
+Only test systems you own or are explicitly authorized to assess. HiveSwarm's controls reduce mistakes; they do not replace written authorization, target-side rate limits, data-handling rules, backups, or professional judgment.

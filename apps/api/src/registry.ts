@@ -19,12 +19,19 @@ export class AgentRegistry {
         const raw = await readFile(join(this.root, entry, "agent.json"), "utf8");
         await this.store.upsertManifest(agentManifestSchema.parse(JSON.parse(raw)));
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
       }
     }
   }
 
-  async list() { return this.store.listManifests(); }
+  async list() {
+    const installed = await this.store.listManifests();
+    const latest = new Map<string, AgentManifest>();
+    for (const manifest of installed.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))) {
+      if (!latest.has(manifest.id)) latest.set(manifest.id, manifest);
+    }
+    return [...latest.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   async get(agentId: string): Promise<AgentManifest | undefined> {
     const manifests = await this.list();

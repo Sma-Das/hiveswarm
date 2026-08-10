@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import {
   approvalDecisionSchema,
   createEngagementSchema,
+  orchestrateRequestSchema,
   spawnAgentRequestSchema,
 } from "@hiveswarm/contracts";
 import Fastify from "fastify";
@@ -9,13 +10,18 @@ import { ZodError } from "zod";
 import { z } from "zod";
 import { config as loadDotEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { loadConfig } from "./config.js";
 import { QueueExecutionDriver, SimulatedExecutionDriver, type ExecutionDriver } from "./executor.js";
 import { EventBus } from "./events.js";
 import { id } from "./id.js";
 import { OrchestratorService } from "./orchestrator.js";
+import { OrchestrationLoop } from "./orchestration-loop.js";
+import { OpenAiResponsesProvider } from "./model-provider.js";
 import { DeterministicPlanner, OpenAiPlanner } from "./planner.js";
 import { AgentRegistry } from "./registry.js";
+import { generateReport, reportAsMarkdown } from "./report.js";
 import { MemoryStore, PostgresStore } from "./store.js";
 
 loadDotEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)), quiet: true });
@@ -24,7 +30,7 @@ const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, bodyLi
 const isAllowedOrigin = (origin?: string) => !origin || origin === config.webOrigin || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
 await app.register(cors, {
   origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
-  methods: ["GET", "POST", "OPTIONS"],
+  methods: ["GET", "POST", "DELETE", "OPTIONS"],
 });
 
 const store = config.storageDriver === "postgres"
@@ -39,9 +45,24 @@ const executor: ExecutionDriver = config.executionDriver === "queue"
   ? new QueueExecutionDriver(config.redisUrl)
   : new SimulatedExecutionDriver(store, events);
 const orchestrator = new OrchestratorService(store, registry, executor, events);
-const planner = config.openAiApiKey
-  ? new OpenAiPlanner(config.openAiApiKey, config.openAiModel)
-  : new DeterministicPlanner();
+const fallbackPlanner = new DeterministicPlanner();
+const modelProvider = config.openAiApiKey ? new OpenAiResponsesProvider(config.openAiApiKey, config.openAiModel) : undefined;
+const planner = modelProvider
+  ? new OpenAiPlanner(modelProvider)
+  : fallbackPlanner;
+const orchestrationLoop = new OrchestrationLoop(
+  store,
+  registry,
+  orchestrator,
+  fallbackPlanner,
+  modelProvider,
+);
+
+async function assertCurrentRun(runId: string) {
+  const dashboard = await store.getDashboard();
+  const currentRunId = dashboard.agents.find((agent) => agent.depth === 0)?.runId ?? dashboard.engagement.id;
+  if (runId !== currentRunId) throw new Error("Run not found.");
+}
 
 app.setErrorHandler((error, _request, reply) => {
   if (error instanceof ZodError) return reply.status(400).send({ error: "Invalid request", issues: error.issues });
@@ -53,37 +74,111 @@ app.setErrorHandler((error, _request, reply) => {
 
 app.get("/health", async () => ({ ok: true, storage: config.storageDriver, execution: config.executionDriver }));
 app.get("/api/dashboard", async () => store.getDashboard());
+app.get("/api/reports/current", async (request, reply) => {
+  const report = generateReport(await store.getDashboard());
+  const { format, download } = z.object({ format: z.enum(["json", "markdown"]).default("json"), download: z.enum(["0", "1"]).default("0") }).parse(request.query ?? {});
+  if (format === "markdown") {
+    if (download === "1") reply.header("Content-Disposition", `attachment; filename="hiveswarm-${report.engagement.id}.md"`);
+    return reply.type("text/markdown; charset=utf-8").send(reportAsMarkdown(report));
+  }
+  return report;
+});
 app.get("/api/agents", async () => ({ agents: await registry.list() }));
+app.get("/api/agents/:agentId", async (request, reply) => {
+  const { agentId } = request.params as { agentId: string };
+  const manifest = await registry.get(agentId);
+  return manifest ? { manifest } : reply.status(404).send({ error: "Agent not found." });
+});
+app.get("/api/artifacts/:agentRunId/:filename", async (request, reply) => {
+  const { agentRunId, filename } = request.params as { agentRunId: string; filename: string };
+  if (!/^[a-zA-Z0-9_-]+$/.test(agentRunId) || !/^[a-zA-Z0-9._-]+$/.test(filename)) return reply.status(400).send({ error: "Invalid artifact path." });
+  const contentTypes: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", json: "application/json", md: "text/markdown; charset=utf-8", txt: "text/plain; charset=utf-8" };
+  const extension = filename.split(".").pop()?.toLowerCase() ?? "";
+  try {
+    const artifact = await readFile(join(config.artifactPath, agentRunId, filename));
+    return reply.type(contentTypes[extension] ?? "application/octet-stream").send(artifact);
+  } catch {
+    return reply.status(404).send({ error: "Artifact not found." });
+  }
+});
 app.post("/api/agents/install", async (request, reply) => {
   const manifest = await registry.install(request.body);
   await store.appendAudit({ id: id("audit"), actor: "human", action: "agent.installed", resource: `${manifest.id}@${manifest.version}`, detail: { image: manifest.image }, createdAt: new Date().toISOString() });
   return reply.status(201).send({ manifest });
 });
+app.post("/api/scope/rules", async (request, reply) => {
+  const input = z.object({ kind: z.enum(["host", "domain", "cidr", "url-prefix", "repository"]), value: z.string().min(1).max(2048), action: z.enum(["allow", "deny"]) }).parse(request.body);
+  const dashboard = await store.getDashboard();
+  if (dashboard.engagement.scopeRules.some((rule) => rule.kind === input.kind && rule.value === input.value && rule.action === input.action)) throw new Error("An identical scope rule already exists.");
+  const rule = { id: id("scope"), ...input };
+  dashboard.engagement.scopeRules.push(rule);
+  await store.saveDashboard(dashboard);
+  await store.appendAudit({ id: id("audit"), actor: "human", action: "scope.rule.added", resource: rule.id, detail: rule, createdAt: new Date().toISOString() });
+  return reply.status(201).send({ rule });
+});
+app.delete("/api/scope/rules/:ruleId", async (request, reply) => {
+  const { ruleId } = request.params as { ruleId: string };
+  const dashboard = await store.getDashboard();
+  const rule = dashboard.engagement.scopeRules.find((item) => item.id === ruleId);
+  if (!rule) return reply.status(404).send({ error: "Scope rule not found." });
+  if (rule.action === "allow" && dashboard.engagement.scopeRules.filter((item) => item.action === "allow").length === 1) return reply.status(422).send({ error: "Keep at least one allow rule before removing this boundary." });
+  dashboard.engagement.scopeRules = dashboard.engagement.scopeRules.filter((item) => item.id !== ruleId);
+  await store.saveDashboard(dashboard);
+  await store.appendAudit({ id: id("audit"), actor: "human", action: "scope.rule.removed", resource: ruleId, detail: rule, createdAt: new Date().toISOString() });
+  return reply.status(204).send();
+});
 app.post("/api/engagements", async (request, reply) => {
   const input = createEngagementSchema.parse(request.body);
   const dashboard = await store.getDashboard();
-  dashboard.engagement = { id: id("eng"), name: input.name, target: input.target, status: "planning", startedAt: new Date().toISOString(), scopeRules: input.scopeRules };
-  dashboard.agents = [];
+  const engagementId = id("eng");
+  const startedAt = new Date().toISOString();
+  const orchestratorRunId = id("ar");
+  dashboard.engagement = { id: engagementId, name: input.name, target: input.target, status: "planning", startedAt, scopeRules: input.scopeRules };
+  dashboard.agents = [{
+    id: orchestratorRunId,
+    runId: engagementId,
+    parentAgentRunId: null,
+    agentId: "orchestrator",
+    agentName: "Orchestrator",
+    lifecycle: "session",
+    status: "running",
+    depth: 0,
+    task: "Coordinate the authorized evaluation and synthesize specialist evidence.",
+    target: input.target,
+    startedAt,
+    completedAt: null,
+    logCount: 1,
+  }];
   dashboard.findings = [];
   dashboard.approvals = [];
-  dashboard.graph = { nodes: [], edges: [] };
-  dashboard.logs = [];
-  dashboard.metrics = { activeAgents: 0, assets: 0, findings: 0, pendingApprovals: 0 };
+  dashboard.graph = { nodes: [
+    { id: id("node"), kind: "engagement", label: input.name, subtitle: input.target, status: "planning", metadata: {}, discoveredBy: "Orchestrator", createdAt: startedAt },
+    { id: id("node"), kind: "agent", label: "Orchestrator", subtitle: "Control plane", status: "running", metadata: { agentRunId: orchestratorRunId }, discoveredBy: "HiveSwarm", createdAt: startedAt },
+  ], edges: [] };
+  dashboard.logs = [{ id: id("log"), agentRunId: orchestratorRunId, level: "info", message: "Engagement initialized. Waiting for an evaluation objective.", timestamp: startedAt }];
+  dashboard.artifacts = [];
+  dashboard.metrics = { activeAgents: 1, assets: 1, findings: 0, pendingApprovals: 0 };
   await store.saveDashboard(dashboard);
   return reply.status(201).send({ engagement: dashboard.engagement });
 });
-app.post("/api/runs/:runId/plan", async () => planner.createPlan(await store.getDashboard(), await registry.list()));
+app.post("/api/runs/:runId/plan", async (request) => {
+  const { runId } = request.params as { runId: string };
+  await assertCurrentRun(runId);
+  return planner.createPlan(await store.getDashboard(), await registry.list());
+});
+app.post("/api/runs/:runId/orchestrate", async (request) => {
+  const { runId } = request.params as { runId: string };
+  await assertCurrentRun(runId);
+  return orchestrationLoop.run(orchestrateRequestSchema.parse(request.body ?? {}));
+});
 app.post("/api/runs/:runId/state", async (request) => {
   const { runId } = request.params as { runId: string };
   const { status } = z.object({ status: z.enum(["running", "paused"]) }).parse(request.body);
-  const dashboard = await store.getDashboard();
-  dashboard.engagement.status = status;
-  await store.saveDashboard(dashboard);
-  await store.appendAudit({ id: id("audit"), actor: "human", action: `run.${status}`, resource: runId, detail: {}, createdAt: new Date().toISOString() });
-  events.publish({ id: id("evt"), type: `run.${status}`, runId, occurredAt: new Date().toISOString(), data: {} });
-  return { status };
+  return orchestrator.setRunState(runId, status);
 });
 app.post("/api/runs/:runId/agents", async (request, reply) => {
+  const { runId } = request.params as { runId: string };
+  await assertCurrentRun(runId);
   const result = await orchestrator.spawn(spawnAgentRequestSchema.parse(request.body));
   return reply.status(201).send(result);
 });
@@ -103,6 +198,10 @@ app.post("/api/agent-runs/:agentRunId/complete", async (request, reply) => {
   const body = request.body as { outcome?: "completed" | "failed"; message?: string };
   if (body.outcome !== "completed" && body.outcome !== "failed") return reply.status(400).send({ error: "Outcome must be completed or failed." });
   return { agentRun: await orchestrator.complete(agentRunId, body.outcome, body.message) };
+});
+app.post("/api/agent-runs/:agentRunId/terminate", async (request) => {
+  const { agentRunId } = request.params as { agentRunId: string };
+  return { agentRun: await orchestrator.terminate(agentRunId) };
 });
 app.get("/api/runs/:runId/events", async (request, reply) => {
   const { runId } = request.params as { runId: string };

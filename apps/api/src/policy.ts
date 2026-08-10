@@ -12,14 +12,44 @@ export type PolicyDecision =
 
 function targetHost(value: string): string {
   if (value.startsWith("repository:")) return value;
-  try { return new URL(value.includes("://") ? value : `https://${value}`).hostname.toLowerCase(); }
+  try { return new URL(value.includes("://") ? value : `https://${value}`).hostname.toLowerCase().replace(/^\[|\]$/g, ""); }
   catch { return value.toLowerCase(); }
+}
+
+function ipValue(value: string): { value: bigint; bits: number } | undefined {
+  const host = value.replace(/^\[|\]$/g, "");
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
+    const parts = host.split(".").map(Number);
+    if (parts.some((part) => part > 255)) return undefined;
+    return { value: parts.reduce((total, part) => (total << 8n) + BigInt(part), 0n), bits: 32 };
+  }
+  if (!host.includes(":")) return undefined;
+  const halves = host.split("::");
+  if (halves.length > 2) return undefined;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves[1] ? halves[1].split(":") : [];
+  const fill = halves.length === 2 ? 8 - left.length - right.length : 0;
+  const groups = [...left, ...Array.from({ length: fill }, () => "0"), ...right];
+  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/i.test(group))) return undefined;
+  return { value: groups.reduce((total, group) => (total << 16n) + BigInt(`0x${group}`), 0n), bits: 128 };
+}
+
+function cidrMatches(cidr: string, host: string) {
+  const [address, prefixText] = cidr.split("/");
+  if (!address || prefixText === undefined) return false;
+  const network = ipValue(address);
+  const candidate = ipValue(host);
+  const prefix = Number(prefixText);
+  if (!network || !candidate || network.bits !== candidate.bits || !Number.isInteger(prefix) || prefix < 0 || prefix > network.bits) return false;
+  const shift = BigInt(network.bits - prefix);
+  return (network.value >> shift) === (candidate.value >> shift);
 }
 
 function ruleMatches(kind: string, ruleValue: string, target: string): boolean {
   if (kind === "repository") return target === ruleValue || target.startsWith(`${ruleValue}/`);
   if (kind === "url-prefix") return target.startsWith(ruleValue);
   const host = targetHost(target);
+  if (kind === "cidr") return cidrMatches(ruleValue, host);
   const rule = ruleValue.toLowerCase();
   if (rule.startsWith("*.")) return host === rule.slice(2) || host.endsWith(rule.slice(1));
   return host === rule;

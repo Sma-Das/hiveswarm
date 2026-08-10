@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "id": "trufflehog",
+  "name": "TruffleHog",
+  "version": "0.1.0",
+  "description": "Scans an authorized repository for verified and high-confidence secrets without emitting raw secret values.",
+  "role": "secret-scanning",
+  "image": "hiveswarm/trufflehog:dev",
+  "command": ["python3", "/agent/scan.py"],
+  "lifecycle": ["task"],
+  "capabilities": ["source.read", "secrets.scan", "finding.write"],
+  "skills": ["trufflehog", "verified-secrets", "redacted-evidence"],
+  "accepts": ["repository"],
+  "emits": ["finding"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "runtime": "ephemeral", "delegated-by": "source-review" }
+}

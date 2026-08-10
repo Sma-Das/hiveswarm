@@ -2,6 +2,14 @@ import type { AgentManifest, Dashboard } from "@hiveswarm/contracts";
 import { Pool } from "pg";
 import { createDemoDashboard } from "./seed.js";
 
+function normalizeDashboard(dashboard: Dashboard): Dashboard {
+  return {
+    ...dashboard,
+    artifacts: dashboard.artifacts ?? [],
+    approvals: dashboard.approvals.map((approval) => ({ ...approval, context: approval.context ?? {} })),
+  };
+}
+
 export type AuditEvent = {
   id: string;
   actor: string;
@@ -27,7 +35,7 @@ export class MemoryStore implements StateStore {
   readonly audit: AuditEvent[] = [];
 
   async initialize() {}
-  async getDashboard() { return structuredClone(this.dashboard); }
+  async getDashboard() { return structuredClone(normalizeDashboard(this.dashboard)); }
   async saveDashboard(dashboard: Dashboard) { this.dashboard = structuredClone(dashboard); }
   async listManifests() { return [...this.manifests.values()].map((item) => structuredClone(item)); }
   async upsertManifest(manifest: AgentManifest) { this.manifests.set(`${manifest.id}@${manifest.version}`, structuredClone(manifest)); }
@@ -72,7 +80,7 @@ export class PostgresStore implements StateStore {
 
   async getDashboard() {
     const result = await this.pool.query<{ payload: Dashboard }>("SELECT payload FROM state_snapshots WHERE id = 'dashboard'");
-    return result.rows[0]?.payload ?? createDemoDashboard();
+    return normalizeDashboard(result.rows[0]?.payload ?? createDemoDashboard());
   }
 
   async saveDashboard(dashboard: Dashboard) {

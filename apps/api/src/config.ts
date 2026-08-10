@@ -12,6 +12,7 @@ export type AppConfig = {
   callbackToken?: string;
   openAiApiKey?: string;
   openAiModel: string;
+  artifactPath: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -32,5 +33,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ...(env.AGENT_CALLBACK_TOKEN ? { callbackToken: env.AGENT_CALLBACK_TOKEN } : {}),
     ...(openAiApiKey ? { openAiApiKey } : {}),
     openAiModel: env.OPENAI_MODEL ?? "gpt-5.6-terra",
+    artifactPath: env.ARTIFACT_PATH ?? "/artifacts",
   };
 }

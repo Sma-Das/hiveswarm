@@ -158,6 +158,7 @@ export function createDemoDashboard(): Dashboard {
         requestedAction: "Add admin.northstar.test to the allowlist for passive browser exploration only.",
         requestedBy: "Explorer",
         createdAt: minutesAgo(4),
+        context: { kind: "scope_proposal", scopeKind: "host", scopeValue: "admin.northstar.test" },
       },
     ],
     graph: {
@@ -188,5 +189,6 @@ export function createDemoDashboard(): Dashboard {
       { id: "log_4", agentRunId: "ar_explorer", level: "warn", message: "Scope boundary reached: admin.northstar.test", timestamp: minutesAgo(4) },
       { id: "log_5", agentRunId: "ar_source", level: "info", message: "Reporter received structured evidence for finding_1", timestamp: minutesAgo(3) },
     ],
+    artifacts: [],
   };
 }

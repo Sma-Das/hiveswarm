@@ -1,4 +1,5 @@
 import type { AgentManifest, Dashboard } from "@hiveswarm/contracts";
+import { responseText, type ModelProvider } from "./model-provider.js";
 
 export type PlanStep = { agentId: string; lifecycle: "task" | "session"; task: string; rationale: string };
 export type EvaluationPlan = { summary: string; steps: PlanStep[] };
@@ -27,14 +28,10 @@ export class DeterministicPlanner implements Planner {
 }
 
 export class OpenAiPlanner implements Planner {
-  constructor(private readonly apiKey: string, private readonly model: string) {}
+  constructor(private readonly provider: ModelProvider) {}
 
   async createPlan(dashboard: Dashboard, agents: AgentManifest[]): Promise<EvaluationPlan> {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: this.model,
+    const response = await this.provider.createResponse({
         safety_identifier: `engagement_${dashboard.engagement.id}`,
         reasoning: { effort: "medium" },
         input: [
@@ -80,12 +77,9 @@ export class OpenAiPlanner implements Planner {
             },
           },
         },
-      }),
-      signal: AbortSignal.timeout(45_000),
     });
-    if (!response.ok) throw new Error(`OpenAI planning failed with status ${response.status}.`);
-    const payload = (await response.json()) as { output_text?: string };
-    if (!payload.output_text) throw new Error("OpenAI planning returned no structured output.");
-    return JSON.parse(payload.output_text) as EvaluationPlan;
+    const output = responseText(response);
+    if (!output) throw new Error(`${this.provider.id} planning returned no structured output.`);
+    return JSON.parse(output) as EvaluationPlan;
   }
 }
