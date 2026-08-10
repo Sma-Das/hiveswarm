@@ -62,4 +62,4 @@ The current implementation stores one materialized dashboard per project in tran
 
 ## Extensibility
 
-`ModelProvider`, `StateStore`, `ExecutionDriver`, and the manifest/event schemas are explicit boundaries. The first model adapter uses OpenAI Responses function calls with strict tool schemas, `store: false`, and an engagement-scoped safety identifier. Adding another provider requires translating its tool calls at the provider boundary; policy and execution stay unchanged.
+`ModelProvider`, `StateStore`, `ExecutionDriver`, and the manifest/event schemas are explicit boundaries. `ModelProvider` exposes planning and bounded orchestration in domain terms; the OpenAI adapter owns strict tool schemas, multi-turn response items, call IDs, `store: false`, and the engagement-scoped safety identifier. Adding another provider requires translating its wire behavior into the same typed spawn proposals at that seam. Every proposal still passes through local policy and execution unchanged.

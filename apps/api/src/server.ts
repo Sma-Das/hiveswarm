@@ -20,7 +20,7 @@ import { id } from "./id.js";
 import { OrchestratorService } from "./orchestrator.js";
 import { OrchestrationLoop } from "./orchestration-loop.js";
 import { OpenAiResponsesProvider } from "./model-provider.js";
-import { DeterministicPlanner, OpenAiPlanner } from "./planner.js";
+import { DeterministicPlanner } from "./planner.js";
 import { AgentRegistry } from "./registry.js";
 import { generateReport, reportAsMarkdown } from "./report.js";
 import { MemoryStore, PostgresStore } from "./store.js";
@@ -48,9 +48,7 @@ const executor: ExecutionDriver = config.executionDriver === "queue"
 const orchestrator = new OrchestratorService(store, registry, executor, events);
 const fallbackPlanner = new DeterministicPlanner();
 const modelProvider = config.openAiApiKey ? new OpenAiResponsesProvider(config.openAiApiKey, config.openAiModel) : undefined;
-const planner = modelProvider
-  ? new OpenAiPlanner(modelProvider)
-  : fallbackPlanner;
+const planner = modelProvider ?? fallbackPlanner;
 const orchestrationLoop = new OrchestrationLoop(
   store,
   registry,
