@@ -1,5 +1,5 @@
 import type { AgentManifest, Dashboard, ProjectSummary } from "@hiveswarm/contracts";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { createDemoDashboard } from "./seed.js";
 
 export type AuditEvent = {
@@ -10,6 +10,14 @@ export type AuditEvent = {
   detail: Record<string, unknown>;
   createdAt: string;
 };
+
+export type DashboardOwner =
+  | { kind: "project"; id: string }
+  | { kind: "run"; id: string }
+  | { kind: "agent"; id: string }
+  | { kind: "approval"; id: string };
+
+export type DashboardMutation<T> = (dashboard: Dashboard) => T;
 
 function normalizeDashboard(dashboard: Dashboard): Dashboard {
   return {
@@ -37,6 +45,7 @@ export interface StateStore {
   getDashboardForRun(runId: string): Promise<Dashboard>;
   getDashboardForAgent(agentRunId: string): Promise<Dashboard>;
   getDashboardForApproval(approvalId: string): Promise<Dashboard>;
+  mutateDashboard<T>(owner: DashboardOwner, mutation: DashboardMutation<T>): Promise<T>;
   listProjects(): Promise<ProjectSummary[]>;
   getActiveProjectId(): Promise<string>;
   setActiveProject(projectId: string): Promise<void>;
@@ -52,6 +61,7 @@ export class MemoryStore implements StateStore {
   private activeProjectId: string;
   private readonly manifests = new Map<string, AgentManifest>();
   readonly audit: AuditEvent[] = [];
+  private mutationTail: Promise<void> = Promise.resolve();
 
   constructor() {
     const demo = createDemoDashboard();
@@ -83,6 +93,35 @@ export class MemoryStore implements StateStore {
     const dashboard = [...this.dashboards.values()].find((item) => item.approvals.some((approval) => approval.id === approvalId));
     if (!dashboard) throw new Error("Approval not found.");
     return structuredClone(normalizeDashboard(dashboard));
+  }
+
+  async mutateDashboard<T>(owner: DashboardOwner, mutation: DashboardMutation<T>): Promise<T> {
+    const previous = this.mutationTail;
+    let release = () => {};
+    this.mutationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      const dashboard = this.resolveOwnedDashboard(owner);
+      const next = structuredClone(normalizeDashboard(dashboard));
+      const result = mutation(next);
+      this.dashboards.set(next.engagement.id, structuredClone(normalizeDashboard(next)));
+      return structuredClone(result);
+    } finally {
+      release();
+    }
+  }
+
+  private resolveOwnedDashboard(owner: DashboardOwner) {
+    const dashboards = [...this.dashboards.values()];
+    const dashboard = owner.kind === "project"
+      ? this.dashboards.get(owner.id)
+      : owner.kind === "run"
+        ? dashboards.find((item) => item.agents.some((agent) => agent.runId === owner.id))
+        : owner.kind === "agent"
+          ? dashboards.find((item) => item.agents.some((agent) => agent.id === owner.id))
+          : dashboards.find((item) => item.approvals.some((approval) => approval.id === owner.id));
+    if (!dashboard) throw new Error(`${owner.kind[0]!.toUpperCase()}${owner.kind.slice(1)} not found.`);
+    return dashboard;
   }
 
   async listProjects() {
@@ -150,6 +189,44 @@ export class PostgresStore implements StateStore {
   private async allDashboards() {
     const result = await this.pool.query<{ payload: Dashboard }>("SELECT payload FROM state_snapshots WHERE id LIKE 'dashboard:%' ORDER BY updated_at DESC");
     return result.rows.map((row) => normalizeDashboard(row.payload));
+  }
+
+  private async ownedDashboard(client: PoolClient, owner: DashboardOwner, lock = false) {
+    const suffix = lock ? " FOR UPDATE" : "";
+    if (owner.kind === "project") {
+      return client.query<{ id: string; payload: Dashboard }>(`SELECT id, payload FROM state_snapshots WHERE id = $1${suffix}`, [`dashboard:${owner.id}`]);
+    }
+    const collection = owner.kind === "approval" ? "approvals" : "agents";
+    const field = owner.kind === "run" ? "runId" : "id";
+    return client.query<{ id: string; payload: Dashboard }>(
+      `SELECT id, payload FROM state_snapshots
+       WHERE id LIKE 'dashboard:%'
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(payload->'${collection}') AS item
+           WHERE item->>'${field}' = $1
+         )${suffix}`,
+      [owner.id],
+    );
+  }
+
+  async mutateDashboard<T>(owner: DashboardOwner, mutation: DashboardMutation<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const selected = await this.ownedDashboard(client, owner, true);
+      const row = selected.rows[0];
+      if (!row) throw new Error(`${owner.kind[0]!.toUpperCase()}${owner.kind.slice(1)} not found.`);
+      const dashboard = normalizeDashboard(row.payload);
+      const result = mutation(dashboard);
+      await client.query("UPDATE state_snapshots SET payload = $1::jsonb, updated_at = now() WHERE id = $2", [JSON.stringify(normalizeDashboard(dashboard)), row.id]);
+      await client.query("COMMIT");
+      return structuredClone(result);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getActiveProjectId() {

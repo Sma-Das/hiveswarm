@@ -16,18 +16,18 @@ export class SimulatedExecutionDriver implements ExecutionDriver {
   constructor(private readonly store: StateStore, private readonly events: EventBus) {}
 
   async dispatch(agentRun: AgentRun) {
-    const dashboard = await this.store.getDashboard();
-    const current = dashboard.agents.find((agent) => agent.id === agentRun.id);
-    if (!current) return;
-    current.status = "running";
-    current.startedAt = new Date().toISOString();
-    dashboard.logs.unshift({
-      id: id("log"), agentRunId: current.id, level: "info",
-      message: `Sandbox prepared for ${current.agentName}; waiting for specialist output.`, timestamp: new Date().toISOString(),
+    const current = await this.store.mutateDashboard({ kind: "agent", id: agentRun.id }, (dashboard) => {
+      const owned = dashboard.agents.find((agent) => agent.id === agentRun.id)!;
+      owned.status = "running";
+      owned.startedAt = new Date().toISOString();
+      dashboard.logs.unshift({
+        id: id("log"), agentRunId: owned.id, level: "info",
+        message: `Sandbox prepared for ${owned.agentName}; waiting for specialist output.`, timestamp: new Date().toISOString(),
+      });
+      owned.logCount += 1;
+      dashboard.metrics.activeAgents = dashboard.agents.filter((agent) => agent.status === "running").length;
+      return owned;
     });
-    current.logCount += 1;
-    dashboard.metrics.activeAgents = dashboard.agents.filter((agent) => agent.status === "running").length;
-    await this.store.saveDashboard(dashboard);
     this.events.publish({ id: id("evt"), type: "agent.started", runId: current.runId, occurredAt: new Date().toISOString(), data: { agentRunId: current.id } });
   }
 

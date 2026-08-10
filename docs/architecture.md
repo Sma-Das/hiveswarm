@@ -58,7 +58,7 @@ The included API has no end-user authentication and is intended for a trusted lo
 
 ## Persistence and concurrency
 
-The current implementation stores one materialized dashboard per project in transactional PostgreSQL JSONB snapshots, with a small workspace record for the active project and agent versions/audit events in separate tables. Legacy single-dashboard data is migrated non-destructively on startup. API-process mutations are serialized to avoid callback races. This is sufficient for the vertical slice; horizontally scaled APIs should replace it with row-level transactions or an event-sourced reducer.
+The current implementation stores one materialized dashboard per project in transactional PostgreSQL JSONB snapshots, with a small workspace record for the active project and agent versions/audit events in separate tables. Legacy single-dashboard data is migrated non-destructively on startup. Every mutation resolves an explicit project, run, agent run, or approval owner before changing state. The memory adapter serializes these mutations and the PostgreSQL adapter locks the owning project row for the transaction, so background execution cannot follow the console's active-project preference and concurrent callbacks do not overwrite each other inside one API process. Audit rows and published events still follow the snapshot commit rather than sharing a durable outbox; horizontally scaled APIs need an outbox or event-sourced reducer for atomic delivery.
 
 ## Extensibility
 
