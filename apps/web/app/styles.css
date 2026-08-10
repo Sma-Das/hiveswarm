@@ -437,7 +437,7 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
   .workspace { min-height: calc(100dvh - 7rem); padding: 1rem; overflow: visible; }
   .workspace-header { align-items: flex-start; }
   .workspace-actions .button--quiet:not(.mobile-specialist-action) { display: none; }
-  .mobile-specialist-action { display: inline-flex; }
+  .workspace-actions .mobile-specialist-action { display: inline-flex; }
   .metric-strip { grid-template-columns: 1fr 1fr; }
   .metric-strip > div:nth-child(2) { border-inline-end: 0; }
   .metric-strip > div:nth-child(n + 3) { margin-block-start: 0.875rem; padding-block-start: 0.875rem; border-block-start: 1px solid var(--separator); }
