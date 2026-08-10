@@ -44,6 +44,10 @@ services:
     image: hiveswarm/reporter:dev
     build: { context: ., dockerfile: agents/Dockerfile, target: reporter }
     profiles: [agents]
+  agent-freeform-ubuntu:
+    image: hiveswarm/freeform-ubuntu:dev
+    build: { context: ., dockerfile: agents/Dockerfile, target: freeform-ubuntu }
+    profiles: [agents]
 
 volumes:
   burp-data:

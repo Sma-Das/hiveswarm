@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1",
+  "id": "freeform-ubuntu",
+  "name": "Freeform Ubuntu",
+  "version": "0.1.0",
+  "description": "Executes an orchestrator-authored, human-approved command plan in an isolated Ubuntu task container when no purpose-built specialist fits.",
+  "role": "bounded-generalist",
+  "image": "hiveswarm/freeform-ubuntu:dev",
+  "command": ["python3", "/agent/freeform.py"],
+  "lifecycle": ["task"],
+  "capabilities": [
+    "shell.execute",
+    "network.passive",
+    "network.active",
+    "network.high-rate",
+    "source.read",
+    "credentials.use",
+    "exploit.execute",
+    "scope.propose",
+    "graph.write",
+    "finding.write"
+  ],
+  "skills": ["goal-decomposition", "linux-diagnostics", "tool-composition", "evidence-capture"],
+  "accepts": ["goal", "exact-target", "approved-capabilities", "execution-plan", "optional-read-only-source"],
+  "emits": ["log", "structured-event", "scan-output-artifact"],
+  "configuration": [],
+  "enabled": true,
+  "labels": { "tier": "core", "approval": "always", "runtime": "ubuntu-24.04" }
+}

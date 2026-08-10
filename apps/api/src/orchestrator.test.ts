@@ -12,6 +12,12 @@ const manifest = agentManifestSchema.parse({
   lifecycle: ["task", "session"], capabilities: ["network.active", "scope.propose"], skills: [], accepts: [], emits: [], configuration: [], enabled: true, labels: {},
 });
 
+const freeformManifest = agentManifestSchema.parse({
+  schemaVersion: "1", id: "freeform-ubuntu", name: "Freeform Ubuntu", version: "0.1.0",
+  description: "A governed Ubuntu generalist used to verify reviewed command execution.", role: "bounded-generalist", image: "test:latest", command: ["test"],
+  lifecycle: ["task"], capabilities: ["shell.execute", "network.passive", "graph.write", "finding.write"], skills: [], accepts: [], emits: [], configuration: [], enabled: true, labels: {},
+});
+
 class RecordingExecutor implements ExecutionDriver {
   dispatched: string[] = [];
   terminated: string[] = [];
@@ -34,7 +40,7 @@ describe("OrchestratorService", () => {
     dashboard.engagement.status = "running";
     await store.saveDashboard(dashboard);
     executor = new RecordingExecutor();
-    const registry = { get: async (agentId: string) => agentId === manifest.id ? manifest : undefined, list: async () => [manifest] } as AgentRegistry;
+    const registry = { get: async (agentId: string) => [manifest, freeformManifest].find((item) => item.id === agentId), list: async () => [manifest, freeformManifest] } as AgentRegistry;
     service = new OrchestratorService(store, registry, executor, new EventBus());
   });
 
@@ -42,7 +48,7 @@ describe("OrchestratorService", () => {
     const dashboard = await store.getDashboard();
     dashboard.engagement.status = "paused";
     await store.saveDashboard(dashboard);
-    await expect(service.spawn({ agentId: manifest.id, lifecycle: "task", task: "Inspect the approved host safely", target: "app.northstar.test", requestedCapabilities: [] })).rejects.toThrow(/paused/i);
+    await expect(service.spawn({ agentId: manifest.id, lifecycle: "task", task: "Inspect the approved host safely", target: "app.northstar.test", requestedCapabilities: [], executionPlan: [] })).rejects.toThrow(/paused/i);
   });
 
   it("turns explorer scope proposals into human-approved allow rules without restarting the explorer", async () => {
@@ -70,5 +76,30 @@ describe("OrchestratorService", () => {
 
   it("rejects late evidence from completed executions", async () => {
     await expect(service.ingest("ar_ports", { type: "log", level: "info", message: "late output" })).rejects.toThrow(/no longer active/i);
+  });
+
+  it("stores the exact freeform plan and presents every command for human approval", async () => {
+    const result = await service.spawn({
+      agentId: "freeform-ubuntu", lifecycle: "task", task: "Collect a bounded host diagnostic", target: "app.northstar.test",
+      requestedCapabilities: ["shell.execute", "network.passive"],
+      executionPlan: [
+        { label: "Resolve host", command: "getent hosts app.northstar.test", timeoutSeconds: 30 },
+        { label: "Read robots", command: "curl -fsS --max-time 15 https://app.northstar.test/robots.txt", timeoutSeconds: 30 },
+      ],
+    });
+    expect(result.approvalRequired).toBe(true);
+    expect(executor.dispatched).not.toContain(result.agentRun.id);
+    const dashboard = await store.getDashboard();
+    const approval = dashboard.approvals.find((item) => item.agentRunId === result.agentRun.id);
+    expect(approval?.requestedAction).toContain("getent hosts app.northstar.test");
+    expect(approval?.requestedAction).toContain("curl -fsS --max-time 15");
+    expect(result.agentRun.executionPlan).toHaveLength(2);
+  });
+
+  it("rejects structured evidence that was not granted to the execution", async () => {
+    await expect(service.ingest("ar_explorer", {
+      type: "finding",
+      finding: { title: "Unapproved finding", severity: "low", status: "open", confidence: 0.5, assetLabel: "test", summary: "This event should be rejected.", evidence: [], discoveredBy: "Explorer" },
+    })).rejects.toThrow(/finding\.write/i);
   });
 });

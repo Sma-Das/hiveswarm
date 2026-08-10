@@ -7,7 +7,7 @@ An agent package is a validated manifest plus an operator-trusted container imag
 - `id` and semantic `version` identify a package version.
 - `role`, `description`, `skills`, `accepts`, and `emits` explain when the package is useful.
 - `lifecycle` declares `task`, `session`, or both.
-- `capabilities` are enforced permissions. Requested capabilities must be declared; high-rate scanning, credential use, and exploit execution require a one-time decision.
+- `capabilities` are enforced permissions. Requested capabilities must be declared; high-rate scanning, credential use, exploit execution, and shell execution require a one-time decision.
 - `image` and `command` define the replaceable runtime.
 - `configuration` allowlists the only package-specific environment values the worker may inject. Secret values never belong in the manifest.
 
@@ -25,6 +25,8 @@ The worker supplies:
 
 - `HIVESWARM_AGENT_ID`, `HIVESWARM_AGENT_RUN_ID`, and `HIVESWARM_DEPTH`;
 - `HIVESWARM_TASK`, `HIVESWARM_TARGET`, and `HIVESWARM_LIFECYCLE`;
+- `HIVESWARM_REQUESTED_CAPABILITIES`, containing only the permissions approved for this run;
+- `HIVESWARM_EXECUTION_PLAN_B64` only for the freeform package, carrying the schema-validated reviewed plan;
 - `HIVESWARM_ARTIFACT_DIR` and `HIVESWARM_ARTIFACT_BASE`;
 - `HIVESWARM_SOURCE_PATH=/target` only for a validated source mount;
 - values declared in the package's `configuration` array.
@@ -36,6 +38,14 @@ Nodes may include a short `ref`. Later edges can use those refs; the API resolve
 ## Lifecycle expectations
 
 A task process exits when its assignment is complete. A session performs its initial assignment, emits readiness, and remains alive until the control plane terminates it. Processes must handle `SIGTERM`, avoid daemonizing, keep evidence values bounded, and never emit secret values. Exit zero marks completion; any other exit marks failure unless the run was already terminated by an operator.
+
+## Freeform Ubuntu package
+
+`freeform-ubuntu` is an escape hatch for a specific goal that has no installed specialist. It is task-only. Its spawn request must contain `shell.execute` and one to twelve `{ label, command, timeoutSeconds }` steps; a plan without the capability or a capability without a plan is rejected. The approval card includes the exact commands.
+
+The runtime executes each step sequentially, stops on failure, applies a maximum five-minute timeout and output/file bounds, redacts common secret patterns, and writes `freeform-results.json`. A command may emit a typed event on a line prefixed with `HIVESWARM_EVENT=`, but the API rejects graph, finding, and scope events unless that run was granted the corresponding capability. The command digest is retained with the result while the command itself remains in the approval and audit record.
+
+The container has common Ubuntu diagnostic tools but no Docker socket. Its root filesystem is read-only; `/workspace` and `/tmp` are bounded temporary filesystems. Network mode is `none` unless a network capability was explicitly requested, and a repository is mounted read-only only when `source.read` is both requested and configured. Commands receive a small allowlisted environment rather than the worker or plan environment.
 
 ## Burp package
 

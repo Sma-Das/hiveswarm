@@ -5,7 +5,7 @@ HiveSwarm is a human-governed, multi-agent application-security evaluation platf
 This repository implements the core vertical slice:
 
 - model-directed orchestration through a provider interface, with OpenAI Responses function calling first and a deterministic offline fallback;
-- versioned runtime installation and discovery for 11 agents;
+- versioned runtime installation and discovery for 12 agents;
 - task and session lifecycles, pause/resume/terminate controls, and recursive spawning to depth five;
 - deny-by-default target policy, one-time human approval gates, audit events, bounded scan settings, and authenticated worker callbacks;
 - real adapters for Playwright, Nmap, Gobuster, Semgrep, TruffleHog, and a license-safe bring-your-own-JAR Burp runtime;
@@ -53,9 +53,12 @@ Without the Docker override, `docker compose up --build` runs PostgreSQL, Redis,
 | Port scanner | task | rate-bounded Nmap service discovery |
 | Subdomain/vhost enumerator | task | bounded Gobuster DNS discovery |
 | Reporter | task or session | artifact and live report coordination |
+| Freeform Ubuntu | task | human-reviewed command plans in an isolated Ubuntu toolbox |
 | Orchestrator | session | registry-aware evaluation manager |
 
 Source agents use targets such as `repository:team/service`. Set `HIVESWARM_SOURCE_ROOT` to the absolute host directory containing those repositories; the worker rejects path traversal and mounts only the selected repository read-only.
+
+Freeform Ubuntu is the controlled fallback for goals that do not fit a purpose-built specialist. It never receives an interactive host shell: the orchestrator must submit one to twelve exact commands, request `shell.execute`, and wait for human approval. Network, source, credential, high-rate, and exploit capabilities remain separately requested. The worker runs the approved plan in a read-only-root Ubuntu task container with dropped capabilities, bounded resources, a private workspace, no Docker socket, network disabled unless approved, redacted output, and a structured results artifact.
 
 ## Configuration
 

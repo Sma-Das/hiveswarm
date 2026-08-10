@@ -1,5 +1,6 @@
 import {
   agentEventSchema,
+  type AgentCapability,
   type AgentEvent,
   type AgentRun,
   type Dashboard,
@@ -11,6 +12,13 @@ import { id } from "./id.js";
 import { PolicyEngine } from "./policy.js";
 import type { AgentRegistry } from "./registry.js";
 import type { StateStore } from "./store.js";
+
+function eventCapability(event: AgentEvent): AgentCapability | undefined {
+  if (event.type === "node" || event.type === "edge") return "graph.write";
+  if (event.type === "finding") return "finding.write";
+  if (event.type === "scope_proposal") return "scope.propose";
+  return undefined;
+}
 
 export class OrchestratorService {
   private readonly policy = new PolicyEngine();
@@ -50,7 +58,8 @@ export class OrchestratorService {
     const agentRun: AgentRun = {
       id: id("ar"), runId: dashboard.agents[0]?.runId ?? dashboard.engagement.id, parentAgentRunId: parent, agentId: manifest.id, agentName: manifest.name,
       lifecycle: request.lifecycle, status: decision.allowed ? "queued" : "waiting_approval", depth,
-      task: request.task, target: request.target, startedAt: null, completedAt: null, logCount: 0,
+      task: request.task, target: request.target, requestedCapabilities: request.requestedCapabilities,
+      executionPlan: request.executionPlan, startedAt: null, completedAt: null, logCount: 0,
     };
 
     if (!decision.allowed && !decision.approvalType) throw new Error(decision.reason);
@@ -59,12 +68,15 @@ export class OrchestratorService {
       dashboard.approvals.unshift({
         id: id("approval"), runId: agentRun.runId, agentRunId: agentRun.id,
         type: decision.approvalType!, status: "pending", title: `Approve ${manifest.name} action`,
-        rationale: decision.reason, requestedAction: `${request.task} Target: ${request.target}`,
+        rationale: decision.reason,
+        requestedAction: request.executionPlan.length
+          ? `${request.task} Target: ${request.target}\n\nCommand plan:\n${request.executionPlan.map((step, index) => `${index + 1}. ${step.label}: ${step.command}`).join("\n").slice(0, 8_000)}`
+          : `${request.task} Target: ${request.target}`,
         requestedBy: request.parentAgentRunId
           ? dashboard.agents.find((agent) => agent.id === request.parentAgentRunId)?.agentName ?? "Orchestrator"
           : "Orchestrator",
         createdAt: new Date().toISOString(),
-        context: { kind: "agent_spawn" },
+        context: { kind: "agent_spawn", requestedCapabilities: request.requestedCapabilities, executionPlan: request.executionPlan },
       });
       dashboard.engagement.status = "waiting_approval";
     }
@@ -118,6 +130,10 @@ export class OrchestratorService {
     const dashboard = await this.store.getDashboardForAgent(agentRunId);
     const agentRun = dashboard.agents.find((agent) => agent.id === agentRunId)!;
     if (["completed", "failed", "terminated"].includes(agentRun.status)) throw new Error("Agent execution is no longer active.");
+    const requiredCapability = eventCapability(event);
+    if (requiredCapability && !agentRun.requestedCapabilities.includes(requiredCapability)) {
+      throw new Error(`Agent execution is not authorized for ${requiredCapability} events.`);
+    }
     if (agentRun.status === "queued" || agentRun.status === "starting") {
       agentRun.status = "running";
       agentRun.startedAt ??= new Date().toISOString();

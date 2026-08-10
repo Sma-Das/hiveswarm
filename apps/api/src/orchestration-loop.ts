@@ -1,5 +1,6 @@
 import {
   agentCapabilitySchema,
+  executionStepSchema,
   spawnAgentRequestSchema,
   type AgentManifest,
   type OrchestrateRequest,
@@ -26,6 +27,7 @@ const spawnToolInput = z.object({
   target: z.string().min(1).max(2048),
   parentAgentRunId: z.string().nullable(),
   requestedCapabilities: z.array(agentCapabilitySchema),
+  executionPlan: z.array(executionStepSchema).max(12),
 });
 
 const finishToolInput = z.object({ summary: z.string().min(1).max(4000) });
@@ -43,12 +45,12 @@ function tools(agents: AgentManifest[]) {
     {
       type: "function",
       name: "spawn_specialist",
-      description: "Start one installed specialist. The policy engine re-validates scope, lifecycle, recursion depth, and requested capabilities. Returns the agent run ID or a structured policy error.",
+      description: "Start one installed specialist. The policy engine re-validates scope, lifecycle, recursion depth, requested capabilities, and any freeform command plan. Returns the agent run ID or a structured policy error.",
       strict: true,
       parameters: {
         type: "object",
         additionalProperties: false,
-        required: ["agentId", "lifecycle", "task", "target", "parentAgentRunId", "requestedCapabilities"],
+        required: ["agentId", "lifecycle", "task", "target", "parentAgentRunId", "requestedCapabilities", "executionPlan"],
         properties: {
           agentId: { type: "string", enum: agents.filter((agent) => agent.id !== "orchestrator").map((agent) => agent.id) },
           lifecycle: { type: "string", enum: ["task", "session"] },
@@ -56,6 +58,21 @@ function tools(agents: AgentManifest[]) {
           target: { type: "string", description: "The exact host, URL, or repository to evaluate. It must match an active allow rule." },
           parentAgentRunId: { type: ["string", "null"], description: "The parent execution ID. Use the root orchestrator run ID for direct children." },
           requestedCapabilities: { type: "array", items: { type: "string", enum: agentCapabilitySchema.options } },
+          executionPlan: {
+            type: "array",
+            maxItems: 12,
+            description: "For freeform-ubuntu only: an exact, bounded command list that a human can review. Use an empty array for all other specialists.",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["label", "command", "timeoutSeconds"],
+              properties: {
+                label: { type: "string" },
+                command: { type: "string" },
+                timeoutSeconds: { type: "integer", minimum: 1, maximum: 300 },
+              },
+            },
+          },
         },
       },
     },
@@ -94,13 +111,15 @@ export class OrchestrationLoop {
     const spawned: OrchestrationOutcome["spawned"] = [];
     const parentAgentRunId = dashboard.agents.find((agent) => agent.depth === 0)?.id;
     for (const step of plan.steps.slice(0, options.maxAgents)) {
+      const manifest = agents.find((agent) => agent.id === step.agentId);
       const result = await this.orchestrator.spawn(spawnAgentRequestSchema.parse({
         agentId: step.agentId,
         lifecycle: step.lifecycle,
         task: step.task,
         target: dashboard.engagement.target,
         ...(parentAgentRunId ? { parentAgentRunId } : {}),
-        requestedCapabilities: [],
+        requestedCapabilities: manifest?.capabilities.filter((capability) => !["network.high-rate", "credentials.use", "exploit.execute", "shell.execute"].includes(capability)) ?? [],
+        executionPlan: [],
       }), runId);
       spawned.push({ agentRunId: result.agentRun.id, agentId: result.agentRun.agentId, approvalRequired: result.approvalRequired });
     }
@@ -123,6 +142,7 @@ export class OrchestrationLoop {
           "Select specialists only from the supplied live registry. Prefer passive discovery before active scanning.",
           "Never widen scope yourself. Out-of-scope actions must be allowed to become human approval requests.",
           "Use the least capabilities necessary. Do not request credentials, high-rate scanning, or exploit execution unless the objective explicitly requires it.",
+          "Use freeform-ubuntu only when no purpose-built specialist fits. Give it an exact goal and bounded executionPlan, request shell.execute, and let the human approval gate review every command.",
           `Create no more than ${options.maxAgents} specialists. Call finish_evaluation when the initial coverage is sufficient.`,
         ].join(" "),
       },

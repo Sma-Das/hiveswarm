@@ -45,11 +45,14 @@ async function simulate(agentRun: AgentRun) {
 }
 
 async function executeContainer(agentRun: AgentRun, manifest: AgentManifest) {
-  const needsNetwork = manifest.capabilities.some((capability) => capability.startsWith("network.") || capability === "browser.interactive" || capability === "proxy.intercept");
+  const requestedCapabilities = agentRun.requestedCapabilities ?? [];
+  const undeclared = requestedCapabilities.find((capability) => !manifest.capabilities.includes(capability));
+  if (undeclared) throw new Error(`${manifest.name} execution requested undeclared capability ${undeclared}.`);
+  const needsNetwork = requestedCapabilities.some((capability) => capability.startsWith("network.") || capability === "browser.interactive" || capability === "proxy.intercept");
   const mounts: Docker.MountSettings[] = [
     { Type: "volume", Source: process.env.ARTIFACT_VOLUME ?? "hiveswarm-artifacts", Target: "/artifacts", ReadOnly: false },
   ];
-  if (manifest.capabilities.includes("source.read")) {
+  if (requestedCapabilities.includes("source.read")) {
     const sourceRoot = process.env.HIVESWARM_SOURCE_ROOT;
     const repository = agentRun.target.startsWith("repository:") ? agentRun.target.slice("repository:".length) : "";
     if (!sourceRoot || !repository) throw new Error("Source agents require a repository: target and HIVESWARM_SOURCE_ROOT on the Docker host.");
@@ -64,7 +67,8 @@ async function executeContainer(agentRun: AgentRun, manifest: AgentManifest) {
     return value ? [`${key}=${value}`] : [];
   });
   const isBurp = manifest.id === "burp-suite";
-  const isHeavy = isBurp || manifest.capabilities.includes("browser.interactive") || manifest.id === "semgrep";
+  const isFreeform = manifest.id === "freeform-ubuntu";
+  const isHeavy = isBurp || requestedCapabilities.includes("browser.interactive") || manifest.id === "semgrep" || isFreeform;
   if (isBurp) mounts.push({ Type: "volume", Source: process.env.BURP_VOLUME ?? "hiveswarm-burp", Target: "/opt/burp", ReadOnly: false });
   const container = await docker.createContainer({
     Image: manifest.image,
@@ -79,7 +83,9 @@ async function executeContainer(agentRun: AgentRun, manifest: AgentManifest) {
       `HIVESWARM_API_URL=${apiUrl}`,
       `HIVESWARM_ARTIFACT_DIR=/artifacts/${agentRun.id}`,
       `HIVESWARM_ARTIFACT_BASE=/api/artifacts/${agentRun.id}`,
-      ...(manifest.capabilities.includes("source.read") ? ["HIVESWARM_SOURCE_PATH=/target"] : []),
+      `HIVESWARM_REQUESTED_CAPABILITIES=${requestedCapabilities.join(",")}`,
+      ...(isFreeform ? [`HIVESWARM_EXECUTION_PLAN_B64=${Buffer.from(JSON.stringify(agentRun.executionPlan ?? [])).toString("base64url")}`] : []),
+      ...(requestedCapabilities.includes("source.read") ? ["HIVESWARM_SOURCE_PATH=/target"] : []),
       ...configuredEnvironment,
     ],
     Labels: { "hiveswarm.agent": manifest.id, "hiveswarm.agent-run": agentRun.id },
@@ -94,7 +100,10 @@ async function executeContainer(agentRun: AgentRun, manifest: AgentManifest) {
       Memory: (isBurp ? 4_096 : isHeavy ? 1_536 : 512) * 1024 * 1024,
       NanoCpus: (isBurp ? 2 : 1) * 1_000_000_000,
       PidsLimit: 256,
-      Tmpfs: { "/tmp": "rw,noexec,nosuid,size=128m" },
+      Tmpfs: {
+        "/tmp": "rw,noexec,nosuid,size=128m",
+        ...(isFreeform ? { "/workspace": "rw,nosuid,size=256m" } : {}),
+      },
       Mounts: mounts,
     },
   });

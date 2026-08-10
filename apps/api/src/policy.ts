@@ -4,6 +4,7 @@ const APPROVAL_CAPABILITIES = new Set<AgentCapability>([
   "network.high-rate",
   "credentials.use",
   "exploit.execute",
+  "shell.execute",
 ]);
 
 export type PolicyDecision =
@@ -67,6 +68,9 @@ export class PolicyEngine {
 
     const undeclared = request.requestedCapabilities.find((capability) => !manifest.capabilities.includes(capability));
     if (undeclared) return { allowed: false, reason: `${manifest.name} does not declare capability ${undeclared}.` };
+    const requestsShell = request.requestedCapabilities.includes("shell.execute");
+    if (requestsShell && request.executionPlan.length === 0) return { allowed: false, reason: "Shell execution requires a non-empty, reviewable command plan." };
+    if (!requestsShell && request.executionPlan.length > 0) return { allowed: false, reason: "A command plan requires the shell.execute capability." };
 
     const denied = dashboard.engagement.scopeRules.some(
       (rule) => rule.action === "deny" && ruleMatches(rule.kind, rule.value, request.target),
@@ -79,6 +83,7 @@ export class PolicyEngine {
     const gated = request.requestedCapabilities.find((capability) => APPROVAL_CAPABILITIES.has(capability));
     if (gated === "credentials.use") return { allowed: false, reason: "Credential use requires human approval.", approvalType: "credential_use" };
     if (gated === "network.high-rate") return { allowed: false, reason: "High-rate scanning requires human approval.", approvalType: "high_rate_scan" };
+    if (gated === "shell.execute") return { allowed: false, reason: "The exact freeform command plan requires human approval.", approvalType: "high_risk_capability" };
     if (gated) return { allowed: false, reason: `${gated} requires human approval.`, approvalType: "high_risk_capability" };
     return { allowed: true, depth };
   }

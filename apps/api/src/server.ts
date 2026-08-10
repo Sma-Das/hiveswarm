@@ -66,7 +66,7 @@ async function assertCurrentRun(runId: string) {
 app.setErrorHandler((error, _request, reply) => {
   if (error instanceof ZodError) return reply.status(400).send({ error: "Invalid request", issues: error.issues });
   const message = error instanceof Error ? error.message : "Unexpected server error.";
-  const status = /not found/i.test(message) ? 404 : /outside|approval|support|depth|declare/i.test(message) ? 422 : 500;
+  const status = /not found/i.test(message) ? 404 : /outside|approval|support|depth|declare|require|capability|lifecycle|allowlist/i.test(message) ? 422 : 500;
   app.log.error(error);
   return reply.status(status).send({ error: message });
 });
@@ -157,6 +157,8 @@ app.post("/api/engagements", async (request, reply) => {
     depth: 0,
     task: "Coordinate the authorized evaluation and synthesize specialist evidence.",
     target: input.target,
+    requestedCapabilities: [],
+    executionPlan: [],
     startedAt,
     completedAt: null,
     logCount: 1,

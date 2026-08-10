@@ -36,6 +36,16 @@ COPY agents/runtime/semgrep-rules.yml /agent/semgrep-rules.yml
 
 FROM trufflesecurity/trufflehog:3.90.5 AS trufflehog-bin
 
+FROM ubuntu:24.04 AS freeform-ubuntu
+RUN DEBIAN_FRONTEND=noninteractive apt-get update \
+    && apt-get install -y --no-install-recommends \
+      bash ca-certificates curl dnsutils file git iproute2 iputils-ping jq \
+      netcat-openbsd nmap openssl python3 ripgrep unzip wget \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
+COPY agents/freeform-ubuntu/freeform.py /agent/freeform.py
+RUN chmod 0555 /agent/freeform.py
+
 FROM python:3.12-slim AS trufflehog
 COPY --from=trufflehog-bin /usr/bin/trufflehog /usr/local/bin/trufflehog
 COPY agents/runtime/scan.py /agent/scan.py

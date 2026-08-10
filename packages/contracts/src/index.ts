@@ -14,6 +14,7 @@ export const agentCapabilitySchema = z.enum([
   "secrets.scan",
   "credentials.use",
   "exploit.execute",
+  "shell.execute",
   "scope.propose",
   "graph.write",
   "finding.write",
@@ -150,6 +151,13 @@ export const approvalSchema = z.object({
 });
 export type Approval = z.infer<typeof approvalSchema>;
 
+export const executionStepSchema = z.object({
+  label: z.string().min(2).max(120),
+  command: z.string().min(1).max(2000),
+  timeoutSeconds: z.number().int().min(1).max(300).default(120),
+});
+export type ExecutionStep = z.infer<typeof executionStepSchema>;
+
 export const agentRunSchema = z.object({
   id: z.string(),
   runId: z.string(),
@@ -161,6 +169,8 @@ export const agentRunSchema = z.object({
   depth: z.number().int().min(0).max(5),
   task: z.string(),
   target: z.string(),
+  requestedCapabilities: z.array(agentCapabilitySchema).default([]),
+  executionPlan: z.array(executionStepSchema).max(12).default([]),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
   logCount: z.number().int().nonnegative(),
@@ -230,6 +240,7 @@ export const spawnAgentRequestSchema = z.object({
   target: z.string().min(1).max(2048),
   parentAgentRunId: z.string().optional(),
   requestedCapabilities: z.array(agentCapabilitySchema).default([]),
+  executionPlan: z.array(executionStepSchema).max(12).default([]),
 });
 export type SpawnAgentRequest = z.infer<typeof spawnAgentRequestSchema>;
 

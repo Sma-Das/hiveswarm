@@ -52,6 +52,7 @@ The root orchestrator is depth zero. The API computes every child's depth from i
 5. Network-capable agents currently join a dedicated bridge. This is isolation, not destination enforcement. A production deployment must apply the same scope policy at DNS and connection time through an egress proxy/firewall.
 6. Source repositories are selected beneath one configured host root and mounted read-only. Artifacts use a separate volume and safe API paths.
 7. Worker callbacks use a dedicated bearer secret. Package changes, scope changes, decisions, lifecycle controls, and spawns are auditable.
+8. The freeform Ubuntu package is capability-rich at registration but receives only the capabilities approved on its individual run. `shell.execute` always requires a visible command plan and a human decision. Commands run without stdin, Docker socket, inherited secrets, or host writes; networking and read-only source mounts are separately gated. Purpose-built packages remain the preferred path because their behavior is narrower and easier to review.
 
 The included API has no end-user authentication and is intended for a trusted local operator network. Do not expose it directly to the internet; add TLS, SSO/RBAC, tenant isolation, secret management, signed-image admission, and a normalized append-only evidence store before production use.
 
