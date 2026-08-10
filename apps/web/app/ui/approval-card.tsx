@@ -3,7 +3,7 @@
 import type { Approval } from "@hiveswarm/contracts";
 import { ArrowUpRight, ShieldAlert } from "lucide-react";
 
-export function ApprovalCard({ approval, busy, onDecision }: { approval: Approval; busy: boolean; onDecision: (decision: "approved" | "denied") => void }) {
+export function ApprovalCard({ approval, busy, detailId = "approval-detail", onDecision }: { approval: Approval; busy: boolean; detailId?: string; onDecision: (decision: "approved" | "denied") => void }) {
   return (
     <article className="approval-card">
       <div className="approval-card__heading">
@@ -11,7 +11,7 @@ export function ApprovalCard({ approval, busy, onDecision }: { approval: Approva
         <div><p className="eyebrow">Human decision</p><h3>{approval.title}</h3></div>
       </div>
       <p>{approval.rationale}</p>
-      <button className="text-link" onClick={() => document.getElementById("approval-detail")?.scrollIntoView()}>
+      <button className="text-link" onClick={() => document.getElementById(detailId)?.scrollIntoView({ block: "nearest" })}>
         Review requested action <ArrowUpRight size={14} strokeWidth={1.5} aria-hidden="true" />
       </button>
       <div className="approval-card__actions">

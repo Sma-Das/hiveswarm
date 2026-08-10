@@ -15,7 +15,7 @@ export function ScopeView({ dashboard, onAdd, onRemove, onInspect }: {
   const [error, setError] = useState("");
   return (
     <section className="management-view" aria-labelledby="scope-title">
-      <div className="management-heading"><div><p className="eyebrow">Deny by default</p><h2 id="scope-title">Scope policy</h2><p>Every specialist target is checked against these ordered boundaries before execution.</p></div></div>
+      <div className="management-heading"><div><p className="eyebrow">Deny by default</p><h1 id="scope-title">Scope policy</h1><p>Every specialist target is checked against these ordered boundaries before execution.</p></div></div>
       <div className="scope-graph-panel"><ScopeGraph dashboard={dashboard} onSelect={onInspect} /></div>
       <form className="scope-form" onSubmit={async (event) => {
         event.preventDefault(); setBusy(true); setError("");

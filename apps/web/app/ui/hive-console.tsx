@@ -266,9 +266,15 @@ export function HiveConsole() {
           </div>
           <div className="workspace-actions">
             <button className="button button--quiet" onClick={() => void toggleRun()}><CircleDotDashed size={16} strokeWidth={1.5} aria-hidden="true" />{dashboard.engagement.status === "paused" ? "Resume run" : "Pause run"}</button>
+            <button className="button button--quiet mobile-specialist-action" onClick={() => setSpawnOpen(true)}><Plus size={16} strokeWidth={2} aria-hidden="true" />Start specialist</button>
             <button className="button button--primary" disabled={orchestrating || dashboard.engagement.status === "paused"} onClick={() => void runOrchestrator()}><Play size={16} strokeWidth={2} aria-hidden="true" />{orchestrating ? "Orchestrating" : "Run orchestrator"}</button>
           </div>
         </section>
+
+        {pendingApproval ? <section className="responsive-approval" aria-label="Pending human decision">
+          <ApprovalCard approval={pendingApproval} busy={decisionBusy} detailId="responsive-approval-detail" onDecision={(decision) => void decide(decision)} />
+          <div className="responsive-approval__detail" id="responsive-approval-detail"><p className="eyebrow">Requested action</p><p>{pendingApproval.requestedAction}</p><small>Requested by {pendingApproval.requestedBy} · {relativeTime(pendingApproval.createdAt)}</small></div>
+        </section> : null}
 
         <section className="metric-strip" aria-label="Evaluation summary">
           <div><span>Active agents</span><strong>{dashboard.metrics.activeAgents}</strong><small>{dashboard.agents.length} total executions</small></div>
@@ -312,7 +318,9 @@ export function HiveConsole() {
               {visibleFindings.map((finding) => (
                 <button className="finding-row" key={finding.id} onClick={() => setSelectedFinding(finding)}>
                   <div><SeverityBadge severity={finding.severity} /><strong>{finding.title}</strong><p>{finding.summary}</p></div>
-                  <bdi>{finding.assetLabel}</bdi><span className="numeric">{Math.round(finding.confidence * 100)}%</span><span>{finding.status}</span>
+                  <span className="finding-row__field"><small>Asset</small><bdi>{finding.assetLabel}</bdi></span>
+                  <span className="finding-row__field"><small>Confidence</small><span className="numeric">{Math.round(finding.confidence * 100)}%</span></span>
+                  <span className="finding-row__field"><small>Status</small><span>{finding.status}</span></span>
                 </button>
               ))}
             </div>

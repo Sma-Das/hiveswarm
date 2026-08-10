@@ -13,10 +13,19 @@ export function ProjectSwitcher({ open, projects, activeProjectId, onClose, onSe
   onNew: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
-  useEffect(() => { const dialog = ref.current; if (!dialog) return; if (open && !dialog.open) dialog.showModal(); if (!open && dialog.open) dialog.close(); }, [open]);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      dialog.showModal();
+      searchRef.current?.focus();
+    }
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
   const visible = useMemo(() => projects.filter((project) => !query.trim() || `${project.name} ${project.target}`.toLowerCase().includes(query.trim().toLowerCase())), [projects, query]);
   return (
     <dialog ref={ref} className="dialog project-dialog" onClose={onClose} onCancel={onClose} aria-labelledby="project-switcher-title">
@@ -25,7 +34,7 @@ export function ProjectSwitcher({ open, projects, activeProjectId, onClose, onSe
           <div><p className="eyebrow">Workspace</p><h2 id="project-switcher-title">Switch project</h2><p className="dialog-copy">Each project keeps its own scope, swarm, evidence graph, findings, and report.</p></div>
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} aria-hidden="true" /></button>
         </div>
-        <label className="project-search"><Search size={16} aria-hidden="true" /><span className="sr-only">Search projects</span><input autoFocus type="search" aria-label="Search projects" placeholder="Search projects" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <label className="project-search"><Search size={16} aria-hidden="true" /><span className="sr-only">Search projects</span><input ref={searchRef} type="search" aria-label="Search projects" placeholder="Search projects" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <div className="project-list">
           {visible.map((project) => <button type="button" key={project.id} className={`project-row${project.id === activeProjectId ? " is-active" : ""}`} disabled={Boolean(busyId)} onClick={async () => {
             if (project.id === activeProjectId) { onClose(); return; }
