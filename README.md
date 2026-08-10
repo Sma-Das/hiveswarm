@@ -63,6 +63,7 @@ Freeform Ubuntu is the controlled fallback for goals that do not fit a purpose-b
 ## Configuration
 
 - `STORAGE_DRIVER`: `memory` or `postgres`.
+- `WEB_PORT` / `API_PORT`: optional host-port overrides for Compose; defaults are `3000` and `4100`.
 - `EXECUTION_DRIVER`: `simulated` or `queue`.
 - `WORKER_MODE`: `simulated` or `docker`.
 - `OPENAI_API_KEY`: optional; activates model-directed orchestration.

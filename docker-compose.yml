@@ -47,7 +47,7 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     ports:
-      - "4100:4100"
+      - "${API_PORT:-4100}:4100"
     volumes:
       - artifact-data:/artifacts:ro
     networks: [control]
@@ -81,7 +81,7 @@ services:
     depends_on:
       - api
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3000}:3000"
     networks: [control]
 
 volumes:
