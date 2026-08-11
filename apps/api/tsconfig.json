@@ -8,5 +8,5 @@
     "sourceMap": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "../../packages/contracts/src/**/*.ts"]
+  "include": ["src/**/*.ts", "../../api/**/*.ts", "../../packages/contracts/src/**/*.ts"]
 }

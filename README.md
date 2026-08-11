@@ -28,7 +28,7 @@ Use the project control in the top bar or sidebar to create and switch assessmen
 
 ## Hosted demo
 
-The Vercel demo is intentionally split into a Next.js project rooted at `apps/web` and a Node function project rooted at the repository. The API function adapter lives in `api/[...path].ts`; Vercel builds the shared contracts package before bundling either application.
+The Vercel demo is intentionally split into a Next.js project rooted at `apps/web` and a Node function project rooted at the repository. The path-preserving API function adapter lives in `api/index.ts`; Vercel builds the shared contracts package before bundling either application.
 
 Keep a public demo on `STORAGE_DRIVER=memory` and `EXECUTION_DRIVER=simulated`, set a strong `AGENT_CALLBACK_TOKEN`, and leave `OPENAI_API_KEY`, Redis, PostgreSQL, Docker, source mounts, and scanner credentials unset. Set `NEXT_PUBLIC_API_URL` to the API project URL and `WEB_ORIGIN` to a comma-separated exact allowlist of the console origins. Demo state is ephemeral and may reset between function instances, so it must not be used for real engagements or sensitive evidence.
 
