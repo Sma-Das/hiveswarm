@@ -45,7 +45,7 @@ export class WorkspaceClient {
 
   constructor(
     private readonly apiUrl: string,
-    private readonly fetchAdapter: FetchAdapter = fetch,
+    private readonly fetchAdapter: FetchAdapter = (input, init) => fetch(input, init),
     private readonly eventSourceFactory: (url: string) => EventSourceAdapter = (url) => new EventSource(url),
   ) {}
 

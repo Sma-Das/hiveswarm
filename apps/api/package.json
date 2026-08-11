@@ -4,10 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "npm run build -w @hiveswarm/contracts",
     "dev": "tsx watch src/server.ts",
+    "prebuild": "npm run build -w @hiveswarm/contracts",
     "build": "tsc -p tsconfig.json",
+    "prestart": "npm run build -w @hiveswarm/contracts",
     "start": "tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build -w @hiveswarm/contracts",
     "test": "vitest run --exclude '**/dist/**'"
   },
   "dependencies": {

@@ -18,6 +18,12 @@ docker compose -f docker-compose.yml -f docker-compose.docker-worker.yml up --bu
 
 The `agents` Compose profile is a build catalog, not a long-running service set. The worker launches images on demand.
 
+## Public Vercel demo
+
+The hosted Vercel path is a disposable product demonstration, not the complete stack. It uses the seeded in-memory store and simulated executor only. Do not configure a provider key, queue driver, database, Docker authority, source root, real target, credentials, or retained evidence on an internet-reachable demo.
+
+The console and API are separate Vercel projects. Configure `NEXT_PUBLIC_API_URL` with the API deployment URL. Configure the API with `STORAGE_DRIVER=memory`, `EXECUTION_DRIVER=simulated`, a strong `AGENT_CALLBACK_TOKEN`, and a comma-separated `WEB_ORIGIN` allowlist containing only the expected console domains. CORS is not API authentication: the demo exposes no user identity or tenant boundary, its state may reset on cold starts or deployment, and it must never be represented as a production assessment service.
+
 ## Engagement workflow
 
 Create a project in the console. HiveSwarm adds one exact-host allow rule inferred from the primary URL/host. Add domain, URL-prefix, CIDR, and repository rules in Scope. Explicit deny rules always win. Use Run orchestrator to start the provider-selected or deterministic initial swarm.

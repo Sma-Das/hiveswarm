@@ -27,8 +27,9 @@ import { MemoryStore, PostgresStore } from "./store.js";
 
 loadDotEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)), quiet: true });
 const config = loadConfig();
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, bodyLimit: 2 * 1024 * 1024 });
-const isAllowedOrigin = (origin?: string) => !origin || origin === config.webOrigin || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+export const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, bodyLimit: 2 * 1024 * 1024 });
+const allowedWebOrigins = new Set(config.webOrigin.split(",").map((origin) => origin.trim()).filter(Boolean));
+const isAllowedOrigin = (origin?: string) => !origin || allowedWebOrigins.has(origin) || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
 await app.register(cors, {
   origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
   methods: ["GET", "POST", "DELETE", "OPTIONS"],
@@ -237,4 +238,4 @@ app.get("/api/runs/:runId/events", async (request, reply) => {
 });
 
 app.addHook("onClose", async () => { await executor.close?.(); await store.close(); });
-await app.listen({ host: config.host, port: config.port });
+if (!process.env.VERCEL) await app.listen({ host: config.host, port: config.port });

@@ -26,6 +26,12 @@ Open `http://localhost:3000`. The API runs at `http://localhost:4100`. Local dev
 
 Use the project control in the top bar or sidebar to create and switch assessments. Each project owns an independent scope, run tree, graph, finding set, artifacts, activity stream, and report. The console offers separate XYFlow views for application topology, recursive swarm execution, and scope decisions; select a finding in a graph or list to open its evidence-path drawer and inspect structured node metadata.
 
+## Hosted demo
+
+The Vercel demo is intentionally split into a Next.js project rooted at `apps/web` and a Node function project rooted at the repository. The API function adapter lives in `api/[...path].ts`; Vercel builds the shared contracts package before bundling either application.
+
+Keep a public demo on `STORAGE_DRIVER=memory` and `EXECUTION_DRIVER=simulated`, set a strong `AGENT_CALLBACK_TOKEN`, and leave `OPENAI_API_KEY`, Redis, PostgreSQL, Docker, source mounts, and scanner credentials unset. Set `NEXT_PUBLIC_API_URL` to the API project URL and `WEB_ORIGIN` to a comma-separated exact allowlist of the console origins. Demo state is ephemeral and may reset between function instances, so it must not be used for real engagements or sensitive evidence.
+
 ## Complete stack
 
 Copy `.env.example` to `.env`, replace the development callback token and database password, and optionally provide `OPENAI_API_KEY`. Then build the specialist images and start the control plane:

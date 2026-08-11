@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "npm run build -w @hiveswarm/contracts",
     "dev": "next dev --hostname 0.0.0.0 --port 3000",
+    "prebuild": "npm run build -w @hiveswarm/contracts",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port 3000",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build -w @hiveswarm/contracts",
     "test": "vitest run --exclude '**/dist/**'"
   },
   "dependencies": {

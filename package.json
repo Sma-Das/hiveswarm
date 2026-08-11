@@ -2,6 +2,7 @@
   "name": "hiveswarm",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Human-governed multi-agent application security evaluation platform",
   "workspaces": [
     "apps/*",

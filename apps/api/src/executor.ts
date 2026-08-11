@@ -1,6 +1,6 @@
 import type { AgentRun } from "@hiveswarm/contracts";
 import { Queue } from "bullmq";
-import IORedis from "ioredis";
+import { Redis } from "ioredis";
 import { id } from "./id.js";
 import type { EventBus } from "./events.js";
 import type { StateStore } from "./store.js";
@@ -36,12 +36,12 @@ export class SimulatedExecutionDriver implements ExecutionDriver {
 }
 
 export class QueueExecutionDriver implements ExecutionDriver {
-  private readonly connection: IORedis;
+  private readonly connection: Redis;
   private readonly queue: Queue;
   private readonly controlQueue: Queue;
 
   constructor(redisUrl: string) {
-    this.connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+    this.connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
     this.queue = new Queue("hiveswarm-agent-executions", { connection: this.connection });
     this.controlQueue = new Queue("hiveswarm-agent-control", { connection: this.connection });
   }

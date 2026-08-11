@@ -280,4 +280,4 @@ export const agentEventSchema = z.discriminatedUnion("type", [
 ]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
-export * from "./evidence";
+export * from "./evidence.js";

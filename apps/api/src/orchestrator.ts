@@ -47,9 +47,9 @@ export class OrchestratorService {
         task: request.task, target: request.target, requestedCapabilities: request.requestedCapabilities,
         executionPlan: request.executionPlan, startedAt: null, completedAt: null, logCount: 0,
       };
-      if (!decision.allowed && !decision.approvalType) throw new Error(decision.reason);
+      if (decision.allowed === false && !decision.approvalType) throw new Error(decision.reason);
       dashboard.agents.push(agentRun);
-      if (!decision.allowed) {
+      if (decision.allowed === false) {
         dashboard.approvals.unshift({
           id: id("approval"), runId: agentRun.runId, agentRunId: agentRun.id,
           type: decision.approvalType!, status: "pending", title: `Approve ${manifest.name} action`,
