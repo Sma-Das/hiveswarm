@@ -5,8 +5,9 @@ import { Ban, Check, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { ScopeGraph } from "./security-graph";
 
-export function ScopeView({ dashboard, onAdd, onRemove, onInspect }: {
+export function ScopeView({ dashboard, selectedNodeId, onAdd, onRemove, onInspect }: {
   dashboard: Dashboard;
+  selectedNodeId?: string | null | undefined;
   onAdd: (rule: Omit<ScopeRule, "id">) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onInspect: (node: GraphNode | null) => void;
@@ -16,7 +17,7 @@ export function ScopeView({ dashboard, onAdd, onRemove, onInspect }: {
   return (
     <section className="management-view" aria-labelledby="scope-title">
       <div className="management-heading"><div><p className="eyebrow">Deny by default</p><h1 id="scope-title">Scope policy</h1><p>Every specialist target is checked against these ordered boundaries before execution.</p></div></div>
-      <div className="scope-graph-panel"><ScopeGraph dashboard={dashboard} onSelect={onInspect} /></div>
+      <div className="scope-graph-panel"><ScopeGraph dashboard={dashboard} selectedId={selectedNodeId} onSelect={onInspect} /></div>
       <form className="scope-form" onSubmit={async (event) => {
         event.preventDefault(); setBusy(true); setError("");
         const form = event.currentTarget;

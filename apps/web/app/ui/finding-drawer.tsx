@@ -26,7 +26,7 @@ export function FindingDrawer({ finding, dashboard, onClose }: { finding: Findin
         <dl className="finding-facts"><div><dt>Asset</dt><dd><bdi>{finding.assetLabel}</bdi></dd></div><div><dt>Confidence</dt><dd>{Math.round(finding.confidence * 100)}%</dd></div><div><dt>Status</dt><dd>{finding.status}</dd></div><div><dt>Raised by</dt><dd>{finding.discoveredBy}</dd></div></dl>
         <section className="finding-path-panel" aria-labelledby="finding-path-title">
           <div className="section-label"><h3 id="finding-path-title">Evidence chain</h3><Route size={15} aria-hidden="true" /></div>
-          <div className="finding-path-graph"><FindingPathGraph dashboard={dashboard} finding={finding} onSelect={setSelectedNode} /></div>
+          <div className="finding-path-graph"><FindingPathGraph dashboard={dashboard} finding={finding} selectedId={selectedNode?.id} onSelect={setSelectedNode} /></div>
           {selectedNode ? <div className="structured-peek"><Braces size={15} aria-hidden="true" /><div><strong>{selectedNode.label}</strong><small>{selectedNode.kind} · {selectedNode.status ?? "observed"}</small></div><code>{JSON.stringify(selectedNode.metadata, null, 2)}</code></div> : null}
         </section>
         <section className="finding-section"><h3>Evidence</h3><ul>{finding.evidence.map((item) => <li key={item}>{item}</li>)}</ul></section>

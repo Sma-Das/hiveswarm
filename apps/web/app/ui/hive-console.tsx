@@ -281,20 +281,17 @@ export function HiveConsole() {
             <FilteredEmpty query={searchQuery.trim()} noun="assets" onClear={() => setSearchQuery("")} />
           ) : pageView !== "findings" && activeView === "topology" ? (
             <div className="graph-wrap">
-              <SecurityGraph nodes={visibleNodes} edges={visibleEdges} onSelect={selectGraphNode} />
-              <div className="graph-legend" aria-label="Graph legend"><span><i className="legend-dot legend-dot--target" />Asset</span><span><i className="legend-dot legend-dot--finding" />Finding</span><span><i className="legend-dot legend-dot--scope" />Scope review</span></div>
+              <SecurityGraph nodes={visibleNodes} edges={visibleEdges} layoutId={dashboard.engagement.id} selectedId={selectedNode?.id} onSelect={selectGraphNode} />
             </div>
           ) : pageView !== "findings" && activeView === "swarm" && normalizedQuery && !visibleAgents.length && !visibleFindings.length ? (
             <FilteredEmpty query={searchQuery.trim()} noun="swarm items" onClear={() => setSearchQuery("")} />
           ) : pageView !== "findings" && activeView === "swarm" ? (
             <div className="graph-wrap">
-              <SwarmGraph agents={normalizedQuery ? visibleAgents : dashboard.agents} findings={visibleFindings} onSelectAgent={(agentRunId) => { setSelectedAgentId(agentRunId); setSelectedNode(null); }} onSelectFinding={setSelectedFinding} />
-              <div className="graph-legend" aria-label="Swarm legend"><span><i className="legend-dot legend-dot--active" />Running</span><span><i className="legend-dot legend-dot--scope" />Waiting</span><span><i className="legend-dot legend-dot--finding" />Failed or finding</span></div>
+              <SwarmGraph agents={normalizedQuery ? visibleAgents : dashboard.agents} findings={visibleFindings} layoutId={dashboard.engagement.id} selectedId={selectedFinding ? `swarm-${selectedFinding.id}` : selectedAgentId} onSelectAgent={(agentRunId) => { setSelectedAgentId(agentRunId); setSelectedNode(null); }} onSelectFinding={setSelectedFinding} />
             </div>
           ) : pageView !== "findings" && activeView === "scope" ? (
             <div className="graph-wrap">
-              <ScopeGraph dashboard={dashboard} onSelect={setSelectedNode} />
-              <div className="graph-legend" aria-label="Scope legend"><span><i className="legend-dot legend-dot--active" />Allowed</span><span><i className="legend-dot legend-dot--finding" />Denied</span><span><i className="legend-dot legend-dot--scope" />Needs review</span></div>
+              <ScopeGraph dashboard={dashboard} selectedId={selectedNode?.id} onSelect={setSelectedNode} />
             </div>
           ) : pageView === "findings" || activeView === "findings" ? (
             <div className="finding-table" id="findings">
@@ -322,7 +319,7 @@ export function HiveConsole() {
         </> : pageView === "registry" ? (
           <RegistryView agents={agents} onInstall={installManifest} />
         ) : pageView === "scope" ? (
-          <ScopeView dashboard={dashboard} onAdd={addScopeRule} onRemove={removeScopeRule} onInspect={setSelectedNode} />
+          <ScopeView dashboard={dashboard} selectedNodeId={selectedNode?.id} onAdd={addScopeRule} onRemove={removeScopeRule} onInspect={setSelectedNode} />
         ) : (
           <ReportView report={report} loading={reportLoading} apiUrl={apiUrl} projectId={dashboard.engagement.id} />
         )}
