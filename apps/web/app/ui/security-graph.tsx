@@ -94,12 +94,14 @@ const nodeTypes = { hive: GraphCard };
 
 function positions(nodes: HiveNode[], mode: GraphMode): HiveFlowNode[] {
   const topologyColumns: Record<string, number> = { engagement: 0, website: 0, host: 0, repository: 0, service: 1, directory: 1, subdomain: 1, endpoint: 2, identity: 2, agent: 2, finding: 3 };
-  const columns = nodes.map((node) => {
+  const rawColumns = nodes.map((node) => {
     const depth = Number(node.metadata.depth ?? 0);
     // Scope decisions and review candidates are siblings. Keeping them in one
     // rank prevents a root-to-review edge from crossing an intervening rule.
     return mode === "swarm" ? depth : mode === "scope" ? (node.kind === "engagement" ? 0 : 1) : topologyColumns[node.kind] ?? 1;
   });
+  const findingRanks = mode === "finding" ? new Map([...new Set(rawColumns)].sort((a, b) => a - b).map((column, index) => [column, index])) : null;
+  const columns = findingRanks ? rawColumns.map((column) => findingRanks.get(column) ?? 0) : rawColumns;
   const totals = new Map<number, number>();
   for (const column of columns) totals.set(column, (totals.get(column) ?? 0) + 1);
   const maxRows = Math.max(1, ...totals.values());
@@ -182,7 +184,7 @@ function GraphLegend({ mode }: { mode: GraphMode }) {
   );
 }
 
-function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, selectedId = null, compact = false }: {
+function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, selectedId = null, compact = false, fitRequestKey }: {
   nodes: HiveNode[];
   edges: HiveEdge[];
   mode: GraphMode;
@@ -191,6 +193,7 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
   onSelect: (node: HiveNode | null) => void;
   selectedId?: string | null | undefined;
   compact?: boolean;
+  fitRequestKey?: string | number | null | undefined;
 }) {
   const automaticNodes = useMemo(() => positions(nodes, mode), [nodes, mode]);
   const graphEdges = useMemo(() => flowEdges(edges), [edges]);
@@ -198,12 +201,48 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
   const [activeId, setActiveId] = useState<string | null>(selectedId ?? null);
   const canvas = useRef<HTMLDivElement | null>(null);
   const flow = useRef<ReactFlowInstance<HiveFlowNode, Edge> | null>(null);
+  const graphNodesRef = useRef(graphNodes);
+  const draggedNodeId = useRef<string | null>(null);
   const restoredStorageKey = useRef<string | null>(null);
   const storageKey = `${layoutStoragePrefix}:${layoutId}:${mode}`;
 
+  useEffect(() => { graphNodesRef.current = graphNodes; }, [graphNodes]);
+
+  const fitGraph = useCallback((duration = 0) => {
+    const instance = flow.current;
+    const element = canvas.current;
+    if (!instance || !element) return;
+
+    if (compact) {
+      const { width: viewportWidth, height: viewportHeight } = element.getBoundingClientRect();
+      const placedNodes = graphNodesRef.current;
+      if (viewportWidth > 0 && viewportHeight > 0 && placedNodes.length) {
+        const minX = Math.min(...placedNodes.map((node) => node.position.x));
+        const minY = Math.min(...placedNodes.map((node) => node.position.y));
+        const maxX = Math.max(...placedNodes.map((node) => node.position.x + (node.measured?.width ?? (typeof node.style?.width === "number" ? node.style.width : 196))));
+        const maxY = Math.max(...placedNodes.map((node) => node.position.y + (node.measured?.height ?? 64)));
+        const contentWidth = Math.max(1, maxX - minX);
+        const contentHeight = Math.max(1, maxY - minY);
+        const inset = 32;
+        const zoom = Math.min(1.15, Math.max(0.28, Math.min((viewportWidth - inset * 2) / contentWidth, (viewportHeight - inset * 2) / contentHeight)));
+        void instance.setViewport({
+          x: viewportWidth / 2 - ((minX + maxX) / 2) * zoom,
+          y: viewportHeight / 2 - ((minY + maxY) / 2) * zoom,
+          zoom,
+        }, { duration });
+        return;
+      }
+    }
+
+    void instance.fitView({ padding: compact ? 0.22 : 0.2, duration });
+  }, [compact]);
+
   useEffect(() => setActiveId(selectedId ?? null), [selectedId]);
   useEffect(() => {
-    const stored = readStoredPositions(storageKey);
+    // Compact evidence paths reopen centered on their current evidence. They
+    // remain draggable for inspection, but intentionally do not restore an old
+    // viewport-specific arrangement from a previous drawer session.
+    const stored = compact ? {} : readStoredPositions(storageKey);
     const isNewLayout = restoredStorageKey.current !== storageKey;
     setGraphNodes((current) => {
       const currentById = new Map(current.map((node) => [node.id, node]));
@@ -217,24 +256,36 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
     });
     if (isNewLayout) {
       restoredStorageKey.current = storageKey;
-      window.requestAnimationFrame(() => void flow.current?.fitView({ padding: compact ? 0.3 : 0.2, duration: 0 }));
+      window.requestAnimationFrame(() => fitGraph(0));
     }
-  }, [activeId, automaticNodes, compact, setGraphNodes, storageKey]);
+  }, [activeId, automaticNodes, fitGraph, setGraphNodes, storageKey]);
   useEffect(() => {
     const element = canvas.current;
     if (!element) return;
     let frame = 0;
-    const observer = new ResizeObserver(() => {
+    const refit = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => void flow.current?.fitView({ padding: compact ? 0.3 : 0.2, duration: 0 }));
-    });
+      frame = window.requestAnimationFrame(() => fitGraph(0));
+    };
+    const observer = new ResizeObserver(refit);
     observer.observe(element);
+    window.addEventListener("resize", refit);
     return () => {
       window.cancelAnimationFrame(frame);
       observer.disconnect();
+      window.removeEventListener("resize", refit);
     };
-  }, [compact]);
-
+  }, [fitGraph]);
+  useEffect(() => {
+    if (fitRequestKey === undefined || fitRequestKey === null) return;
+    const frame = window.requestAnimationFrame(() => fitGraph(0));
+    // The second pass catches the final top-layer size after the drawer enters.
+    const timer = window.setTimeout(() => fitGraph(0), 220);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [fitGraph, fitRequestKey]);
   const selectNode = useCallback((node: HiveFlowNode | null) => {
     setActiveId(node?.id ?? null);
     onSelect(node?.data ?? null);
@@ -243,8 +294,8 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
   const resetLayout = useCallback(() => {
     clearStoredPositions(storageKey);
     setGraphNodes(automaticNodes.map((node) => ({ ...node, selected: node.id === activeId })));
-    window.requestAnimationFrame(() => void flow.current?.fitView({ padding: compact ? 0.3 : 0.2, duration: 180 }));
-  }, [activeId, automaticNodes, compact, setGraphNodes, storageKey]);
+    window.requestAnimationFrame(() => fitGraph(180));
+  }, [activeId, automaticNodes, fitGraph, setGraphNodes, storageKey]);
 
   return (
     <div ref={canvas} className={`graph graph--${mode}`} role="region" aria-label={ariaLabel}>
@@ -252,15 +303,24 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
         nodes={graphNodes}
         edges={graphEdges}
         nodeTypes={nodeTypes}
-        onInit={(instance) => { flow.current = instance; }}
+        onInit={(instance) => {
+          flow.current = instance;
+          window.requestAnimationFrame(() => fitGraph(0));
+        }}
         onNodesChange={onNodesChange}
-        onNodeClick={(_, node) => selectNode(node)}
-        onNodeDragStart={(_, node) => selectNode(node)}
-        onNodeDragStop={(_, movedNode) => writeStoredPositions(storageKey, graphNodes.map((node) => node.id === movedNode.id ? { ...node, position: movedNode.position } : node))}
+        onNodeClick={(_, node) => {
+          if (draggedNodeId.current === node.id) return;
+          selectNode(node);
+        }}
+        onNodeDragStart={(_, node) => { draggedNodeId.current = node.id; }}
+        onNodeDragStop={(_, movedNode) => {
+          if (!compact) writeStoredPositions(storageKey, graphNodes.map((node) => node.id === movedNode.id ? { ...node, position: movedNode.position } : node));
+          window.setTimeout(() => { draggedNodeId.current = null; }, 0);
+        }}
         onPaneClick={() => selectNode(null)}
         fitView
-        fitViewOptions={{ padding: compact ? 0.3 : 0.2 }}
-        minZoom={0.35}
+        fitViewOptions={{ padding: compact ? 0.22 : 0.2 }}
+        minZoom={compact ? 0.28 : 0.35}
         maxZoom={1.8}
         nodesDraggable
         nodesConnectable={false}
@@ -337,7 +397,7 @@ export function ScopeGraph({ dashboard, selectedId, onSelect }: { dashboard: Das
   return <GraphCanvas nodes={nodes} edges={edges} mode="scope" layoutId={dashboard.engagement.id} selectedId={selectedId} ariaLabel="Allowed, denied, and proposed scope boundaries" onSelect={onSelect} />;
 }
 
-export function FindingPathGraph({ dashboard, finding, selectedId, onSelect }: { dashboard: Dashboard; finding: Finding; selectedId?: string | null | undefined; onSelect: (node: HiveNode | null) => void }) {
+export function FindingPathGraph({ dashboard, finding, selectedId, fitRequestKey, onSelect }: { dashboard: Dashboard; finding: Finding; selectedId?: string | null | undefined; fitRequestKey?: string | number | null | undefined; onSelect: (node: HiveNode | null) => void }) {
   const { nodes, edges } = useMemo(() => findingEvidencePath(dashboard, finding), [dashboard, finding]);
-  return <GraphCanvas nodes={nodes} edges={edges} mode="finding" layoutId={finding.id} selectedId={selectedId} compact ariaLabel={`Evidence chain for ${finding.title}`} onSelect={onSelect} />;
+  return <GraphCanvas nodes={nodes} edges={edges} mode="finding" layoutId={finding.id} selectedId={selectedId} compact fitRequestKey={fitRequestKey} ariaLabel={`Evidence chain for ${finding.title}`} onSelect={onSelect} />;
 }
