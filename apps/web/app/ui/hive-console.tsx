@@ -1,6 +1,6 @@
 "use client";
 
-import type { Finding, GraphNode, SpawnAgentRequest } from "@hiveswarm/contracts";
+import type { AgentRun, Finding, GraphNode, SpawnAgentRequest } from "@hiveswarm/contracts";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   Activity, Bot, Boxes, ChevronDown, CircleDotDashed, Command, FileSearch, FileText,
@@ -39,6 +39,19 @@ function FilteredEmpty({ query, noun, onClear }: { query: string; noun: string; 
       <h2>No {noun} match “{query}”</h2>
       <p>Try another search or clear the current filter.</p>
       <button className="button button--quiet" onClick={onClear}>Clear search</button>
+    </div>
+  );
+}
+
+function AgentSelectionCard({ agent, onTerminate }: { agent: AgentRun; onTerminate: () => void }) {
+  const canTerminate = agent.depth > 0 && !["completed", "failed", "terminated"].includes(agent.status);
+  return (
+    <div className="selection-card">
+      <span className="selection-card__icon"><Bot size={19} strokeWidth={1.5} aria-hidden="true" /></span>
+      <div><strong>{agent.agentName}</strong><p>{agent.task}</p></div>
+      <dl><div><dt>Lifecycle</dt><dd>{agent.lifecycle}</dd></div><div><dt>Depth</dt><dd className="numeric">{agent.depth} / 5</dd></div><div><dt>Events</dt><dd className="numeric">{agent.logCount}</dd></div></dl>
+      <Status value={agent.status} />
+      {canTerminate ? <button className="button button--danger button--full" onClick={onTerminate}>Terminate agent</button> : null}
     </div>
   );
 }
@@ -152,6 +165,11 @@ export function HiveConsole() {
     setStatusMessage(result.message);
   }
 
+  function requestAgentTermination(agent: AgentRun) {
+    if (!window.confirm(`Terminate ${agent.agentName}? Its current task will stop and cannot be resumed.`)) return;
+    void terminateAgent(agent.id).catch((cause) => setStatusMessage(cause instanceof Error ? cause.message : "Unable to terminate the agent."));
+  }
+
   async function installManifest(manifest: unknown) {
     const result = await execute({ type: "install-manifest", manifest });
     setStatusMessage(result.message);
@@ -238,6 +256,21 @@ export function HiveConsole() {
 
       <ResizablePanel id="workspace" minSize="26rem">
       <main className="workspace" id="main">
+        <details className="responsive-agent-controls">
+          <summary>
+            <span className="responsive-agent-controls__identity"><Bot size={17} strokeWidth={1.5} aria-hidden="true" /><span><small>Agent controls</small><strong>{selectedAgent?.agentName ?? "Select a specialist"}</strong></span></span>
+            {selectedAgent ? <Status value={selectedAgent.status} /> : null}
+            <ChevronDown className="responsive-agent-controls__chevron" size={16} aria-hidden="true" />
+          </summary>
+          <div className="responsive-agent-controls__body">
+            <label htmlFor="responsive-agent-select">Specialist</label>
+            <select id="responsive-agent-select" value={selectedAgentId} onChange={(event) => { setSelectedAgentId(event.target.value); setSelectedNode(null); }}>
+              {dashboard.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.agentName} — {agent.status.replaceAll("_", " ")}</option>)}
+            </select>
+            {selectedAgent ? <AgentSelectionCard agent={selectedAgent} onTerminate={() => requestAgentTermination(selectedAgent)} /> : <p className="empty-copy">No specialist executions are available.</p>}
+          </div>
+        </details>
+
         {pageView === "evaluation" || pageView === "findings" ? <>
         <section className="workspace-header" aria-labelledby="page-title">
           <div className="workspace-heading">
@@ -341,15 +374,7 @@ export function HiveConsole() {
               <button className="button button--quiet button--full" onClick={() => setSelectedNode(null)}>Return to agent</button>
             </div>
           ) : selectedAgent ? (
-            <div className="selection-card">
-              <span className="selection-card__icon"><Bot size={19} strokeWidth={1.5} aria-hidden="true" /></span>
-              <div><strong>{selectedAgent.agentName}</strong><p>{selectedAgent.task}</p></div>
-              <dl><div><dt>Lifecycle</dt><dd>{selectedAgent.lifecycle}</dd></div><div><dt>Depth</dt><dd className="numeric">{selectedAgent.depth} / 5</dd></div><div><dt>Events</dt><dd className="numeric">{selectedAgent.logCount}</dd></div></dl>
-              <Status value={selectedAgent.status} />
-              {selectedAgent.depth > 0 && !["completed", "failed", "terminated"].includes(selectedAgent.status) ? <button className="button button--danger button--full" onClick={() => {
-                if (window.confirm(`Terminate ${selectedAgent.agentName}? Its current task will stop and cannot be resumed.`)) void terminateAgent(selectedAgent.id).catch((cause) => setStatusMessage(cause instanceof Error ? cause.message : "Unable to terminate the agent."));
-              }}>Terminate agent</button> : null}
-            </div>
+            <AgentSelectionCard agent={selectedAgent} onTerminate={() => requestAgentTermination(selectedAgent)} />
           ) : <p className="empty-copy">Select an agent or graph node to inspect its evidence and state.</p>}
         </section>
 

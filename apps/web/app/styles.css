@@ -136,7 +136,7 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
 .title-line h1 { margin: 0; font-size: var(--text-title); line-height: 1.2; font-weight: 650; letter-spacing: -0.025em; text-wrap: balance; }
 .workspace-heading p { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.18rem 0 0; color: var(--text-tertiary); font-size: var(--text-caption); }
 .workspace-actions { display: flex; gap: 0.75rem; }
-.workspace-actions .mobile-specialist-action, .responsive-approval { display: none; }
+.workspace-actions .mobile-specialist-action, .responsive-approval, .responsive-agent-controls { display: none; }
 .button { min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding-inline: 0.875rem; border: 0; border-radius: 0.5rem; font-size: var(--text-caption); font-weight: 620; white-space: nowrap; cursor: pointer; }
 .button:disabled { opacity: 0.58; cursor: wait; }
 .button--primary { color: var(--accent-ink); background: var(--accent); box-shadow: 0 0 0 1px oklch(1 0 0 / 0.1), 0 2px 8px oklch(0 0 0 / 0.18); }
@@ -274,6 +274,20 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
 .selection-card dt { color: var(--text-tertiary); }
 .selection-card dd { margin: 0; color: var(--text-secondary); text-align: end; text-transform: capitalize; }
 .selection-card > .status, .selection-card > .button { grid-column: 1 / -1; }
+.responsive-agent-controls { margin-block-end: 1rem; background: var(--surface-panel); border-radius: 0.75rem; box-shadow: var(--shadow-panel); }
+.responsive-agent-controls summary { min-height: 3.25rem; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 0.75rem; padding: 0.625rem 0.75rem; color: var(--text-secondary); cursor: pointer; list-style: none; }
+.responsive-agent-controls summary::-webkit-details-marker { display: none; }
+.responsive-agent-controls__identity { min-width: 0; display: flex; align-items: center; gap: 0.625rem; color: var(--accent); }
+.responsive-agent-controls__identity > span { min-width: 0; display: grid; }
+.responsive-agent-controls__identity small { color: var(--text-tertiary); font-size: 0.6875rem; font-weight: 570; }
+.responsive-agent-controls__identity strong { overflow: hidden; color: var(--text-primary); font-size: var(--text-caption); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.responsive-agent-controls[open] .responsive-agent-controls__chevron { rotate: 180deg; }
+.responsive-agent-controls summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.responsive-agent-controls__body { display: grid; grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr); gap: 0.5rem 0.75rem; padding: 0.875rem; border-block-start: 1px solid var(--separator); }
+.responsive-agent-controls:not([open]) .responsive-agent-controls__body { display: none; }
+.responsive-agent-controls__body > label { align-self: center; color: var(--text-secondary); font-size: var(--text-caption); font-weight: 570; }
+.responsive-agent-controls__body > select { min-width: 0; min-height: 2.625rem; padding: 0.55rem 2.25rem 0.55rem 0.7rem; color: var(--text-primary); background: var(--surface-app); border: 1px solid var(--control-border); border-radius: 0.5rem; font: inherit; }
+.responsive-agent-controls__body > .selection-card, .responsive-agent-controls__body > .empty-copy { grid-column: 1 / -1; }
 .priority-list { display: grid; gap: 0.35rem; margin-block-start: 0.5rem; }
 .priority-list button { width: 100%; display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: 0.2rem 0.5rem; padding: 0.625rem; color: var(--text-primary); background: transparent; border: 0; border-radius: 0.5rem; text-align: start; cursor: pointer; }
 .priority-list button:hover { background: var(--surface-hover); }
@@ -446,6 +460,7 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
 
 @media (prefers-reduced-motion: no-preference) {
   .button, .icon-button, .agent-row, .nav-item, .view-switch button, .add-agent, .project-row, .project-trigger, .sidebar-project, .finding-row, .graph-layout-reset { transition-property: scale, color, background-color, box-shadow, border-color; transition-duration: 120ms; transition-timing-function: ease-out; }
+  .responsive-agent-controls__chevron { transition: rotate 120ms ease-out; }
   .button:active:not(:disabled), .icon-button:active:not(:disabled), .nav-item:active:not(:disabled), .add-agent:active:not(:disabled), .graph-layout-reset:active:not(:disabled) { scale: 0.96; }
   .loading-bar::after { animation: loading-sweep 1.2s ease-in-out infinite alternate; }
   .graph-node__pulse { animation: graph-pulse 1.8s ease-out infinite; }
@@ -476,6 +491,7 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
 
 @media (max-width: 84rem) {
   .inspector-pane, .inspector-handle { display: none !important; }
+  .responsive-agent-controls { display: block; }
   .responsive-approval { display: block; max-width: 52rem; margin-block: 1rem 0.25rem; }
 }
 
@@ -555,6 +571,8 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
   .project-row { grid-template-columns: 2.25rem minmax(0, 1fr); }
   .project-row__meta { grid-column: 2; justify-items: start; }
   .dialog__actions--between { align-items: stretch; }
+  .responsive-agent-controls__body { grid-template-columns: 1fr; }
+  .responsive-agent-controls__body > select, .responsive-agent-controls__body > .selection-card, .responsive-agent-controls__body > .empty-copy { grid-column: 1; }
   .risk-grid { grid-template-columns: 1fr 1fr; }
   .registry-card__head { grid-template-columns: 2.25rem minmax(0, 1fr); }
   .registry-card__head i { grid-column: 2; }
@@ -565,5 +583,6 @@ a { color: inherit; text-underline-position: from-font; text-decoration-thicknes
   .graph-node.is-selected { outline: 3px solid Highlight; outline-offset: 2px; }
   button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color: Highlight; }
   .resizable-handle:focus-visible { outline-color: Highlight; }
+  .responsive-agent-controls summary:focus-visible { outline-color: Highlight; }
   .resizable-handle::before { background: CanvasText; }
 }
