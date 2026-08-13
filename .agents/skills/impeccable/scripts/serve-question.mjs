@@ -416,7 +416,8 @@ function page() {
   // A declined card never renders a full media face, comp included: even a
   // declared comp would buy back the salience the verdict took away.
   const faceComp = (option) => (demoted(option) || codeLed) ? null : option.compSrc;
-  const thumbOnly = (option) => !faceComp(option) && Boolean(option.heroSrc || option.boardSrc) && (demoted(option) || identityRound);
+  const hasWireframe = (option) => Array.isArray(option.wireframe?.regions) && option.wireframe.regions.length > 0;
+  const thumbOnly = (option) => !faceComp(option) && Boolean(option.heroSrc || option.boardSrc) && (demoted(option) || identityRound || (codeLed && hasWireframe(option)));
   const hasMedia = (option) => Boolean(faceComp(option) || ((option.heroSrc || option.boardSrc) && !thumbOnly(option)));
   // The back exists to keep long facts off a card whose front is an image;
   // a card with no art has no flip chip to reach it, so it gets no back and
@@ -452,9 +453,9 @@ function page() {
         rows.push(`<div class="raises">${raisesHead(1)}${raiseLines[0]}</div>`);
       }
     }
-    // Demoted art stays reachable as a labeled thumb: the catalog world
-    // explains where the direction comes from without buying it back the
-    // salience the verdict took away.
+    // Subordinate art stays reachable as a labeled thumb: declined worlds do
+    // not buy their salience back, and code-led cards keep the wireframe as
+    // the surface-composition decision.
     if (thumbOnly(option)) {
       rows.push(`<figure class="inspo" title="Inspiration: the world this direction draws from. Your page will not look like this image."><img src="${esc(option.heroSrc || option.boardSrc)}" alt=""><figcaption>inspired by</figcaption></figure>`);
     }
