@@ -7,6 +7,12 @@
       "skillPath": "skills/engineering/codebase-design/SKILL.md",
       "computedHash": "e6394592ecf4b5aa5bc93f95a20d0a56314788bde2e1221f87296d3becb734a2"
     },
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/impeccable/SKILL.md",
+      "computedHash": "e8275e78e06097f62915fc951d15da79e8aeaa3f9559103442d4e1fef5b7c3d7"
+    },
     "improve-codebase-architecture": {
       "source": "mattpocock/skills",
       "sourceType": "github",

@@ -78,7 +78,7 @@ export function FindingDrawer({ finding, dashboard, onClose }: { finding: Findin
     >
       {presentedFinding ? <div className="finding-drawer__surface">
         <header className="finding-drawer__header">
-          <div><p className="eyebrow">Finding evidence</p><SeverityBadge severity={presentedFinding.severity} /><h2 id="finding-drawer-title">{presentedFinding.title}</h2><p>{presentedFinding.summary}</p></div>
+          <div><SeverityBadge severity={presentedFinding.severity} /><h2 id="finding-drawer-title">{presentedFinding.title}</h2><p>{presentedFinding.summary}</p></div>
           <button type="button" className="icon-button" aria-label="Close finding" autoFocus onClick={onClose}><X size={19} aria-hidden="true" /></button>
         </header>
         <dl className="finding-facts"><div><dt>Asset</dt><dd><bdi>{presentedFinding.assetLabel}</bdi></dd></div><div><dt>Confidence</dt><dd>{Math.round(presentedFinding.confidence * 100)}%</dd></div><div><dt>Status</dt><dd>{presentedFinding.status}</dd></div><div><dt>Raised by</dt><dd>{presentedFinding.discoveredBy}</dd></div></dl>

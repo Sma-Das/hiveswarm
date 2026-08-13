@@ -26,7 +26,7 @@ export function EngagementDialog({ open, onClose, onCreate }: { open: boolean; o
         catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to create the project."); }
         finally { setBusy(false); }
       }}>
-        <div className="dialog__header"><div><p className="eyebrow">Authorized target</p><h2 id="engagement-title">Create a project</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} aria-hidden="true" /></button></div>
+        <div className="dialog__header"><div><h2 id="engagement-title">Create a project</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} aria-hidden="true" /></button></div>
         <div className="form-grid">
           <label className="form-grid__wide">Project name<input ref={nameRef} name="name" aria-label="Project name" required placeholder="Northstar portal" /></label>
           <label className="form-grid__wide">Primary target<input name="target" aria-label="Primary target" aria-describedby="project-target-hint" required placeholder="https://app.example.test" /></label>
