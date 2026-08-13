@@ -16,7 +16,7 @@ export function ScopeView({ dashboard, selectedNodeId, onAdd, onRemove, onInspec
   const [error, setError] = useState("");
   return (
     <section className="management-view" aria-labelledby="scope-title">
-      <div className="management-heading"><div><p className="eyebrow">Deny by default</p><h1 id="scope-title">Scope policy</h1><p>Every specialist target is checked against these ordered boundaries before execution.</p></div></div>
+      <div className="management-heading"><div><h1 id="scope-title">Scope policy</h1><p>HiveSwarm denies by default. Every specialist target is checked against these ordered boundaries before execution.</p></div></div>
       <div className="scope-graph-panel"><ScopeGraph dashboard={dashboard} selectedId={selectedNodeId} onSelect={onInspect} /></div>
       <form className="scope-form" onSubmit={async (event) => {
         event.preventDefault(); setBusy(true); setError("");

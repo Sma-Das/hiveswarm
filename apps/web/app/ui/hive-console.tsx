@@ -252,8 +252,7 @@ export function HiveConsole() {
         </section>
 
         {pendingApproval ? <section className="responsive-approval" aria-label="Pending human decision">
-          <ApprovalCard approval={pendingApproval} busy={decisionBusy} detailId="responsive-approval-detail" onDecision={(decision) => void decide(decision)} />
-          <div className="responsive-approval__detail" id="responsive-approval-detail"><p className="eyebrow">Requested action</p><p>{pendingApproval.requestedAction}</p><small>Requested by {pendingApproval.requestedBy} · {relativeTime(pendingApproval.createdAt)}</small></div>
+          <ApprovalCard approval={pendingApproval} busy={decisionBusy} onDecision={(decision) => void decide(decision)} />
         </section> : null}
 
         <section className="metric-strip" aria-label="Evaluation summary">
@@ -326,7 +325,7 @@ export function HiveConsole() {
       </main>
       </ResizablePanel>
 
-      <ResizableHandle withHandle aria-label="Resize details pane" />
+      <ResizableHandle className="inspector-handle" withHandle aria-label="Resize details pane" />
 
       <ResizablePanel className="inspector-pane" id="details" defaultSize="20.5rem" minSize="15rem" maxSize="30rem">
       <aside className="inspector" aria-label="Evaluation details">
@@ -360,8 +359,6 @@ export function HiveConsole() {
             {sortedFindings.slice(0, 3).map((finding) => <button key={finding.id} onClick={() => setSelectedFinding(finding)}><SeverityBadge severity={finding.severity} /><strong>{finding.title}</strong><p><bdi>{finding.assetLabel}</bdi> · {relativeTime(finding.createdAt)}</p></button>)}
           </div>
         </section>
-
-        {pendingApproval ? <section className="inspector-section" id="approval-detail" aria-labelledby="approval-detail-title"><div className="section-label"><h2 id="approval-detail-title">Requested action</h2></div><p className="detail-copy">{pendingApproval.requestedAction}</p><p className="detail-meta">Requested by {pendingApproval.requestedBy} · {relativeTime(pendingApproval.createdAt)}</p></section> : null}
       </aside>
       </ResizablePanel>
       </ResizablePanelGroup>

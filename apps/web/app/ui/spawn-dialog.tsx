@@ -51,7 +51,7 @@ export function SpawnDialog({ open, agents, parentAgents, target, onClose, onSpa
         finally { setBusy(false); }
       }}>
         <div className="dialog__header">
-          <div><p className="eyebrow">Orchestrator request</p><h2 id="spawn-title">Start a specialist</h2></div>
+          <div><h2 id="spawn-title">Start a specialist</h2></div>
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} strokeWidth={1.5} aria-hidden="true" /></button>
         </div>
         <div className="form-grid">

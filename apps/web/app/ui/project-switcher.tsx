@@ -31,7 +31,7 @@ export function ProjectSwitcher({ open, projects, activeProjectId, onClose, onSe
     <dialog ref={ref} className="dialog project-dialog" onClose={onClose} onCancel={onClose} aria-labelledby="project-switcher-title">
       <div className="dialog__surface">
         <div className="dialog__header">
-          <div><p className="eyebrow">Workspace</p><h2 id="project-switcher-title">Switch project</h2><p className="dialog-copy">Each project keeps its own scope, swarm, evidence graph, findings, and report.</p></div>
+          <div><h2 id="project-switcher-title">Switch project</h2><p className="dialog-copy">Each project keeps its own scope, swarm, evidence graph, findings, and report.</p></div>
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} aria-hidden="true" /></button>
         </div>
         <label className="project-search"><Search size={16} aria-hidden="true" /><span className="sr-only">Search projects</span><input ref={searchRef} type="search" aria-label="Search projects" placeholder="Search projects" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
