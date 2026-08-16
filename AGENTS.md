@@ -184,9 +184,24 @@ The current PostgreSQL implementation stores transactional JSONB snapshots per p
 - Comments should explain invariants, trust boundaries, or non-obvious use—not narrate straightforward code.
 - One concern per change. Avoid opportunistic refactors in policy, execution, persistence, or security-sensitive paths.
 
+## Isolated worktrees
+
+Multiple coding agents may work on this repository at the same time. The primary checkout is shared. Do not implement in it: checking out a branch or dirtying that tree will collide with other agents and with the operator.
+
+For any change that writes files, commits, or needs a branch:
+
+1. Create a dedicated git worktree under `${TMPDIR:-/tmp}`. Use a unique directory named from the branch, for example `${TMPDIR:-/tmp}/hiveswarm-<branch>`. Do not place worktrees beside the primary checkout.
+2. Create a new branch in that worktree from current `origin/main`, or from the base the operator named. Do not switch the primary checkout's branch.
+3. Do all edits, installs, typechecks, tests, and commits inside the worktree.
+4. Push the branch and open a pull request. Leave the worktree in place so review comments can be applied there.
+5. Remove only the worktree you created, and only after the operator explicitly confirms the work is complete. Do not delete or prune another agent's worktree.
+
+Read-only questions, reviews of existing files, and planning may use the primary checkout. If a worktree already exists for the same branch, reuse it instead of creating a second one.
+
 ## Pull requests and commits
 
-- Do not create a pull request unless explicitly asked.
+- Land implementation work through a pull request from the isolated worktree branch. Do not merge the pull request unless the operator asks.
+- Do not create a pull request for questions, reviews, or when the operator asked you not to.
 - Use concise conventional commit subjects, for example `fix(policy): keep denied hosts out of scope`.
 - Explain the operator-visible problem and how the change preserves authority and evidence integrity.
 - UI changes should include before/after images when practical; timing or interaction changes benefit from a short recording.
