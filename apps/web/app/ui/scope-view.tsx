@@ -16,7 +16,7 @@ export function ScopeView({ dashboard, selectedNodeId, onAdd, onRemove, onInspec
   const [error, setError] = useState("");
   return (
     <section className="management-view" aria-labelledby="scope-title">
-      <div className="management-heading"><div><p className="eyebrow">Deny by default</p><h1 id="scope-title">Scope policy</h1><p>Every specialist target is checked against these ordered boundaries before execution.</p></div></div>
+      <div className="management-heading"><div><p className="eyebrow">Deny by default</p><h1 id="scope-title">Scope policy</h1><p>Every target is checked against these rules, in order, before an agent runs.</p></div></div>
       <div className="scope-graph-panel"><ScopeGraph dashboard={dashboard} selectedId={selectedNodeId} onSelect={onInspect} /></div>
       <form className="scope-form" onSubmit={async (event) => {
         event.preventDefault(); setBusy(true); setError("");
@@ -31,7 +31,7 @@ export function ScopeView({ dashboard, selectedNodeId, onAdd, onRemove, onInspec
         <label>Decision<select name="action" aria-label="Scope decision" defaultValue="allow"><option value="allow">Allow</option><option value="deny">Deny</option></select></label>
         <label>Boundary type<select name="kind" aria-label="Scope boundary type" defaultValue="domain"><option value="host">Host</option><option value="domain">Domain</option><option value="cidr">CIDR</option><option value="url-prefix">URL prefix</option><option value="repository">Repository</option></select></label>
         <label className="scope-form__value">Boundary value<input name="value" aria-label="Scope boundary value" required placeholder="*.example.test" /></label>
-        <button className="button button--primary" disabled={busy}><Plus size={16} aria-hidden="true" />{busy ? "Adding rule" : "Add rule"}</button>
+        <button className="button button--primary" disabled={busy}><Plus size={16} aria-hidden="true" />{busy ? "Adding" : "Add rule"}</button>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
       </form>
       <div className="scope-list">

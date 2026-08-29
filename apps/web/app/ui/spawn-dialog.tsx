@@ -51,7 +51,7 @@ export function SpawnDialog({ open, agents, parentAgents, target, onClose, onSpa
         finally { setBusy(false); }
       }}>
         <div className="dialog__header">
-          <div><p className="eyebrow">Orchestrator request</p><h2 id="spawn-title">Start a specialist</h2></div>
+          <div><p className="eyebrow">New agent</p><h2 id="spawn-title">Start a specialist</h2></div>
           <button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} strokeWidth={1.5} aria-hidden="true" /></button>
         </div>
         <div className="form-grid">
@@ -66,7 +66,7 @@ export function SpawnDialog({ open, agents, parentAgents, target, onClose, onSpa
           </> : null}
         </div>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
-        <div className="dialog__actions"><button type="button" className="button button--quiet" onClick={onClose}>Cancel</button><button className="button button--primary" disabled={busy}>{busy ? "Starting specialist" : "Start specialist"}</button></div>
+        <div className="dialog__actions"><button type="button" className="button button--quiet" onClick={onClose}>Cancel</button><button className="button button--primary" disabled={busy}>{busy ? "Starting" : "Start specialist"}</button></div>
       </form>
     </dialog>
   );
