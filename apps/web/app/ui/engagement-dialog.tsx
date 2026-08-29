@@ -33,7 +33,7 @@ export function EngagementDialog({ open, onClose, onCreate }: { open: boolean; o
         </div>
         <p className="form-hint" id="project-target-hint">Enter a URL, hostname, or repository reference. HiveSwarm creates one exact-target allow rule; add broader boundaries from Scope.</p>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
-        <div className="dialog__actions"><button type="button" className="button button--quiet" onClick={onClose}>Cancel</button><button className="button button--primary" disabled={busy}>{busy ? "Creating project" : "Create project"}</button></div>
+        <div className="dialog__actions"><button type="button" className="button button--quiet" onClick={onClose}>Cancel</button><button className="button button--primary" disabled={busy}>{busy ? "Creating" : "Create project"}</button></div>
       </form>
     </dialog>
   );

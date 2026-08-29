@@ -16,7 +16,7 @@ export function ApprovalCard({ approval, busy, detailId = "approval-detail", onD
       </button>
       <div className="approval-card__actions">
         <button className="button button--quiet" disabled={busy} onClick={() => onDecision("denied")}>Deny request</button>
-        <button className="button button--primary" disabled={busy} onClick={() => onDecision("approved")}>{busy ? "Saving decision" : "Approve once"}</button>
+        <button className="button button--primary" disabled={busy} onClick={() => onDecision("approved")}>{busy ? "Saving" : "Approve once"}</button>
       </div>
     </article>
   );

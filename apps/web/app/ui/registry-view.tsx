@@ -10,7 +10,7 @@ export function RegistryView({ agents, onInstall }: { agents: AgentManifest[]; o
   return (
     <section className="management-view" aria-labelledby="registry-title">
       <div className="management-heading">
-        <div><p className="eyebrow">Mutable specialist catalog</p><h1 id="registry-title">Agent registry</h1><p>Install or replace container-backed roles without changing the orchestrator.</p></div>
+        <div><p className="eyebrow">Specialist catalog</p><h1 id="registry-title">Agent registry</h1><p>Add or swap out agent roles without touching the orchestrator.</p></div>
         <span className="count-pill"><Box size={15} aria-hidden="true" />{agents.length} installed</span>
       </div>
       <div className="registry-grid">
@@ -37,7 +37,7 @@ export function RegistryView({ agents, onInstall }: { agents: AgentManifest[]; o
           <textarea id="manifest-json" name="manifest" aria-label="Agent manifest JSON" rows={10} required spellCheck={false} placeholder={'{\n  "schemaVersion": "1",\n  "id": "custom-agent"\n}'} />
           <p><Shield size={15} aria-hidden="true" />HiveSwarm validates identity, lifecycle, capabilities, and configuration before registration.</p>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <button className="button button--primary" aria-label="Install agent manifest" disabled={busy}>{busy ? "Installing manifest" : "Install manifest"}</button>
+          <button className="button button--primary" aria-label="Install agent manifest" disabled={busy}>{busy ? "Installing" : "Install manifest"}</button>
         </form>
       </details>
     </section>

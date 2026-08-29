@@ -25,8 +25,6 @@ import {
   type ReactFlowInstance,
   useNodesState,
 } from "@xyflow/react";
-import { Chip } from "@heroui/react/chip";
-import { Kbd } from "@heroui/react/kbd";
 import { Bot, Box, Braces, CircleAlert, Cloud, Folder, Globe2, Network, RotateCcw, Server, UserRound } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -92,6 +90,16 @@ function GraphCard({ data, selected }: NodeProps<HiveFlowNode>) {
 
 const nodeTypes = { hive: GraphCard };
 
+// Color minimap dots by meaning so the overview reads as a map (matching the
+// legend) instead of a row of identical grey bars.
+function minimapNodeColor(node: HiveFlowNode): string {
+  const { kind, severity, status } = node.data;
+  if (kind === "finding" || severity === "high" || severity === "critical") return "var(--danger)";
+  if (severity === "medium" || kind === "subdomain" || status === "waiting_approval" || node.data.metadata.scopeReview === true) return "var(--warning)";
+  if (status === "running" || status === "starting") return "var(--success)";
+  return "var(--minimap-node)";
+}
+
 function positions(nodes: HiveNode[], mode: GraphMode): HiveFlowNode[] {
   const topologyColumns: Record<string, number> = { engagement: 0, website: 0, host: 0, repository: 0, service: 1, directory: 1, subdomain: 1, endpoint: 2, identity: 2, agent: 2, finding: 3 };
   const rawColumns = nodes.map((node) => {
@@ -138,10 +146,10 @@ function flowEdges(edges: HiveEdge[]): Edge[] {
     style: { stroke: edge.metadata.color === "danger" ? "var(--danger)" : edge.metadata.color === "warning" ? "var(--warning)" : "var(--edge)", strokeWidth: edge.metadata.animated ? 1.75 : 1.25 },
     pathOptions: { borderRadius: 18, offset: 30 },
     interactionWidth: 18,
-    labelStyle: { fill: "var(--text-tertiary)", fontSize: 10, fontWeight: 500 },
-    labelBgStyle: { fill: "var(--surface-canvas)", fillOpacity: 0.92 },
-    labelBgPadding: [6, 3],
-    labelBgBorderRadius: 4,
+    labelStyle: { fill: "var(--text-secondary)", fontSize: 10, fontWeight: 500 },
+    labelBgStyle: { fill: "var(--surface-panel)", fillOpacity: 1, stroke: "var(--separator-strong)", strokeWidth: 1 },
+    labelBgPadding: [8, 5] as [number, number],
+    labelBgBorderRadius: 5,
   }));
 }
 
@@ -175,10 +183,10 @@ function GraphLegend({ mode }: { mode: GraphMode }) {
   return (
     <div className="graph-legend" aria-label="Graph legend">
       {graphLegends[mode].map((item) => (
-        <Chip key={item.label} className="graph-legend__chip" color={item.color} size="sm" variant="soft">
+        <span key={item.label} className={`graph-legend__chip chip chip--${item.color}`}>
           <i className={`legend-dot ${item.dotClass}`} aria-hidden="true" />
-          <Chip.Label>{item.label}</Chip.Label>
-        </Chip>
+          <span className="chip__label">{item.label}</span>
+        </span>
       ))}
     </div>
   );
@@ -336,7 +344,7 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--graph-dot)" />
         <Panel position="top-left"><GraphLegend mode={mode} /></Panel>
         {!compact ? <Panel position="top-right" className="graph-guide nodrag nopan">
-          <span>Hold <Kbd className="graph-kbd" variant="light"><Kbd.Content>Space</Kbd.Content></Kbd> to pan</span>
+          <span>Hold <kbd className="graph-kbd kbd">Space</kbd> to pan</span>
           <button
             type="button"
             className="graph-layout-reset nodrag nopan"
@@ -346,7 +354,7 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
           ><RotateCcw size={14} strokeWidth={1.7} aria-hidden="true" />Reset layout</button>
         </Panel> : null}
         <Controls showInteractive={false} position="bottom-left" aria-label="Graph zoom controls" />
-        {!compact ? <MiniMap position="bottom-right" pannable zoomable nodeColor="var(--minimap-node)" maskColor="var(--minimap-mask)" style={{ background: "var(--surface-raised)" }} aria-label="Graph overview" /> : null}
+        {!compact ? <MiniMap position="bottom-right" pannable zoomable nodeColor={minimapNodeColor} nodeStrokeColor="var(--surface-app)" nodeStrokeWidth={6} nodeBorderRadius={4} maskColor="var(--minimap-mask)" maskStrokeColor="var(--separator-strong)" maskStrokeWidth={3} style={{ background: "var(--surface-canvas)" }} aria-label="Graph overview" /> : null}
       </ReactFlow>
     </div>
   );

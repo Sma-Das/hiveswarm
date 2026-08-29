@@ -1,13 +1,14 @@
 "use client";
 
-import type { Finding, GraphNode, SpawnAgentRequest } from "@hiveswarm/contracts";
+import type { AgentRun, Finding, GraphNode, SpawnAgentRequest } from "@hiveswarm/contracts";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   Activity, Bot, Boxes, ChevronDown, CircleDotDashed, Command, FileSearch, FileText,
-  GitFork, Hexagon, LayoutDashboard, Network, Play, Plus, Search, SearchX, ShieldCheck, Target, Waypoints, X,
+  GitFork, Hexagon, LayoutDashboard, Network, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, Play, Plus, Search, SearchX, ShieldCheck, Target, Waypoints, X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { AgentRow } from "./agent-row";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { PanelImperativeHandle } from "react-resizable-panels";
+import { AgentRow, type TreeGuide } from "./agent-row";
 import { ApprovalCard } from "./approval-card";
 import { HiveMark } from "./brand";
 import { ScopeGraph, SecurityGraph, SwarmGraph } from "./security-graph";
@@ -30,6 +31,31 @@ function relativeTime(value: string) {
   if (minutes < 1) return "now";
   if (minutes === 1) return "1 min ago";
   return `${minutes} min ago`;
+}
+
+// Rebuild the swarm's spawn tree from parent links so the sidebar renders the
+// real orchestrator → specialist hierarchy with connector guides instead of a flat list.
+function buildSwarmRows(agents: AgentRun[]): { agent: AgentRun; guides: TreeGuide[] }[] {
+  const byParent = new Map<string | null, AgentRun[]>();
+  for (const agent of agents) {
+    const key = agent.parentAgentRunId ?? null;
+    const bucket = byParent.get(key);
+    if (bucket) bucket.push(agent);
+    else byParent.set(key, [agent]);
+  }
+  const rows: { agent: AgentRun; guides: TreeGuide[] }[] = [];
+  const walk = (parentId: string | null, ancestorLines: boolean[]) => {
+    const children = byParent.get(parentId) ?? [];
+    children.forEach((agent, index) => {
+      const isLast = index === children.length - 1;
+      const guides: TreeGuide[] = ancestorLines.map((continues) => (continues ? "line" : "empty"));
+      if (parentId !== null) guides.push(isLast ? "elbow" : "tee");
+      rows.push({ agent, guides });
+      walk(agent.id, parentId === null ? [] : [...ancestorLines, !isLast]);
+    });
+  };
+  walk(null, []);
+  return rows;
 }
 
 function FilteredEmpty({ query, noun, onClear }: { query: string; noun: string; onClear: () => void }) {
@@ -59,10 +85,43 @@ export function HiveConsole() {
   const [reportLoading, setReportLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [now, setNow] = useState(0);
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [detailsCollapsed, setDetailsCollapsed] = useState(false);
+  const navPanelRef = useRef<PanelImperativeHandle>(null);
+  const detailsPanelRef = useRef<PanelImperativeHandle>(null);
+  const toggleNav = () => {
+    const panel = navPanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) {
+      panel.expand();
+      setNavCollapsed(false);
+    } else {
+      panel.collapse();
+      setNavCollapsed(true);
+    }
+  };
+  const toggleDetails = () => {
+    const panel = detailsPanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) {
+      panel.expand();
+      setDetailsCollapsed(false);
+    } else {
+      panel.collapse();
+      setDetailsCollapsed(true);
+    }
+  };
   useEffect(() => {
     if (!dashboard) return;
     setSelectedAgentId((current) => dashboard.agents.some((agent) => agent.id === current) ? current : dashboard.agents[0]?.id ?? "");
   }, [dashboard]);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, []);
   useEffect(() => {
     if (pageView !== "report") return;
     setReportLoading(true);
@@ -82,6 +141,15 @@ export function HiveConsole() {
     setSelectedNode(node);
   }
 
+  const swarmRows = useMemo(() => buildSwarmRows(dashboard?.agents ?? []), [dashboard?.agents]);
+  const dataNow = useMemo(() => {
+    const times = (dashboard?.agents ?? []).flatMap((agent) => {
+      const stamp = agent.completedAt ?? agent.startedAt;
+      return stamp ? [new Date(stamp).getTime()] : [];
+    });
+    return times.length ? Math.max(...times) : new Date(dashboard?.engagement.startedAt ?? 0).getTime();
+  }, [dashboard?.agents, dashboard?.engagement.startedAt]);
+  const clock = now || dataNow;
   const selectedAgent = dashboard?.agents.find((agent) => agent.id === selectedAgentId) ?? null;
   const pendingApproval = dashboard?.approvals.find((approval) => approval.status === "pending") ?? null;
   const criticalCount = dashboard?.findings.filter((finding) => finding.severity === "critical" || finding.severity === "high").length ?? 0;
@@ -185,24 +253,28 @@ export function HiveConsole() {
     return (
       <main id="main" className="loading-state" aria-busy={!error}>
         <HiveMark />
-        <h1>{error ? "Unable to open HiveSwarm" : "Opening the evaluation"}</h1>
-        <p>{error || "Connecting to the orchestrator and loading evidence…"}</p>
+        <h1>{error ? "Couldn't open HiveSwarm" : "Loading workspace"}</h1>
+        <p>{error || "Loading the current run and its evidence."}</p>
         {error ? <button className="button button--primary" onClick={() => void refresh()}>Try again</button> : <span className="loading-bar" aria-hidden="true" />}
       </main>
     );
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${navCollapsed ? "is-nav-collapsed" : ""} ${detailsCollapsed ? "is-details-collapsed" : ""}`}>
       <div className="sr-only" role="status">{statusMessage}</div>
       <div className="sr-only" role="status">{searchResultMessage}</div>
       {statusMessage ? <div className="status-toast"><span>{statusMessage}</span><button aria-label="Dismiss message" onClick={() => setStatusMessage("")}><X size={16} aria-hidden="true" /></button></div> : null}
       <header className="topbar">
-        <a className="brand" href="/" aria-label="HiveSwarm home"><HiveMark small /><span>HiveSwarm</span><small>alpha</small></a>
+        <div className="brand">
+          <button className="sidebar-toggle icon-button" aria-label={navCollapsed ? "Show sidebar" : "Hide sidebar"} aria-pressed={navCollapsed} onClick={toggleNav}>{navCollapsed ? <PanelLeft size={18} strokeWidth={1.5} aria-hidden="true" /> : <PanelLeftClose size={18} strokeWidth={1.5} aria-hidden="true" />}</button>
+          <a className="brand__home" href="/" aria-label="HiveSwarm home"><HiveMark small /><span>HiveSwarm</span><small>alpha</small></a>
+        </div>
         <button className="breadcrumbs project-trigger" aria-label={`Switch project, current project ${dashboard.engagement.name}`} onClick={() => setProjectSwitcherOpen(true)}><span>Projects</span><span aria-hidden="true">/</span><strong>{dashboard.engagement.name}</strong><ChevronDown size={14} aria-hidden="true" /></button>
         <div className="topbar__actions">
           <span className="environment-switch"><span className="status__dot" aria-hidden="true" />Local workspace</span>
           <span className="avatar" aria-label="Signed in as Sma Das">SD</span>
+          <button className="sidebar-toggle icon-button" aria-label={detailsCollapsed ? "Show details panel" : "Hide details panel"} aria-pressed={detailsCollapsed} onClick={toggleDetails}>{detailsCollapsed ? <PanelRight size={18} strokeWidth={1.5} aria-hidden="true" /> : <PanelRightClose size={18} strokeWidth={1.5} aria-hidden="true" />}</button>
         </div>
       </header>
 
@@ -211,9 +283,17 @@ export function HiveConsole() {
         orientation="horizontal"
         resizeTargetMinimumSize={{ fine: 12, coarse: 36 }}
       >
-      <ResizablePanel id="navigation" defaultSize="15rem" minSize="11rem" maxSize="24rem">
-      <aside className="sidebar" aria-label="Workspace navigation">
-        <button className="sidebar-project" onClick={() => setProjectSwitcherOpen(true)}><span className="sidebar-project__mark"><Hexagon size={16} aria-hidden="true" /></span><span><small>Current project</small><strong>{dashboard.engagement.name}</strong></span><ChevronDown size={14} aria-hidden="true" /></button>
+      <ResizablePanel
+        id="navigation"
+        panelRef={navPanelRef}
+        defaultSize="15rem"
+        minSize="11rem"
+        maxSize="24rem"
+        collapsible
+        collapsedSize="0rem"
+        onResize={(size) => setNavCollapsed(size.inPixels < 1)}
+      >
+      <aside className="sidebar" aria-label="Workspace navigation" inert={navCollapsed || undefined} aria-hidden={navCollapsed || undefined}>
         <nav className="primary-nav" aria-label="Primary">
           <button className={`nav-item ${pageView === "evaluation" ? "is-active" : ""}`} aria-current={pageView === "evaluation" ? "page" : undefined} onClick={() => { setPageView("evaluation"); setActiveView("topology"); }}><LayoutDashboard size={17} strokeWidth={1.5} aria-hidden="true" />Evaluation</button>
           <button className={`nav-item ${pageView === "registry" ? "is-active" : ""}`} aria-current={pageView === "registry" ? "page" : undefined} onClick={() => setPageView("registry")}><Bot size={17} strokeWidth={1.5} aria-hidden="true" />Agent registry<span className="nav-count">{agents.length}</span></button>
@@ -225,7 +305,7 @@ export function HiveConsole() {
         <section className="swarm-section" id="agent-swarm" aria-labelledby="swarm-title">
           <div className="section-label"><h2 id="swarm-title">Live swarm</h2><span>{dashboard.metrics.activeAgents} active</span></div>
           <div className="agent-tree">
-            {dashboard.agents.map((agent) => <AgentRow key={agent.id} agent={agent} selected={agent.id === selectedAgentId} onSelect={() => setSelectedAgentId(agent.id)} />)}
+            {swarmRows.map(({ agent, guides }) => <AgentRow key={agent.id} agent={agent} guides={guides} now={clock} selected={agent.id === selectedAgentId} onSelect={() => setSelectedAgentId(agent.id)} />)}
           </div>
           <button className="add-agent" onClick={() => setSpawnOpen(true)}><Plus size={16} strokeWidth={2} aria-hidden="true" />Start specialist</button>
         </section>
@@ -234,7 +314,7 @@ export function HiveConsole() {
       </aside>
       </ResizablePanel>
 
-      <ResizableHandle withHandle aria-label="Resize navigation pane" />
+      <ResizableHandle withHandle className="resizable-handle--nav" aria-label="Resize navigation pane" />
 
       <ResizablePanel id="workspace" minSize="26rem">
       <main className="workspace" id="main">
@@ -247,7 +327,7 @@ export function HiveConsole() {
           <div className="workspace-actions">
             <button className="button button--quiet" onClick={() => void toggleRun()}><CircleDotDashed size={16} strokeWidth={1.5} aria-hidden="true" />{dashboard.engagement.status === "paused" ? "Resume run" : "Pause run"}</button>
             <button className="button button--quiet mobile-specialist-action" onClick={() => setSpawnOpen(true)}><Plus size={16} strokeWidth={2} aria-hidden="true" />Start specialist</button>
-            <button className="button button--primary" disabled={orchestrating || dashboard.engagement.status === "paused"} onClick={() => void runOrchestrator()}><Play size={16} strokeWidth={2} aria-hidden="true" />{orchestrating ? "Orchestrating" : "Run orchestrator"}</button>
+            <button className="button button--primary" disabled={orchestrating || dashboard.engagement.status === "paused"} onClick={() => void runOrchestrator()}><Play size={16} strokeWidth={2} aria-hidden="true" />{orchestrating ? "Running" : "Run orchestrator"}</button>
           </div>
         </section>
 
@@ -326,10 +406,20 @@ export function HiveConsole() {
       </main>
       </ResizablePanel>
 
-      <ResizableHandle withHandle aria-label="Resize details pane" />
+      <ResizableHandle withHandle className="resizable-handle--details" aria-label="Resize details pane" />
 
-      <ResizablePanel className="inspector-pane" id="details" defaultSize="20.5rem" minSize="15rem" maxSize="30rem">
-      <aside className="inspector" aria-label="Evaluation details">
+      <ResizablePanel
+        className="inspector-pane"
+        id="details"
+        panelRef={detailsPanelRef}
+        defaultSize="20.5rem"
+        minSize="15rem"
+        maxSize="30rem"
+        collapsible
+        collapsedSize="0rem"
+        onResize={(size) => setDetailsCollapsed(size.inPixels < 1)}
+      >
+      <aside className="inspector" aria-label="Evaluation details" inert={detailsCollapsed || undefined} aria-hidden={detailsCollapsed || undefined}>
         {pendingApproval ? <ApprovalCard approval={pendingApproval} busy={decisionBusy} onDecision={(decision) => void decide(decision)} /> : null}
 
         <section className="inspector-section" aria-labelledby="selection-title">
@@ -348,10 +438,10 @@ export function HiveConsole() {
               <dl><div><dt>Lifecycle</dt><dd>{selectedAgent.lifecycle}</dd></div><div><dt>Depth</dt><dd className="numeric">{selectedAgent.depth} / 5</dd></div><div><dt>Events</dt><dd className="numeric">{selectedAgent.logCount}</dd></div></dl>
               <Status value={selectedAgent.status} />
               {selectedAgent.depth > 0 && !["completed", "failed", "terminated"].includes(selectedAgent.status) ? <button className="button button--danger button--full" onClick={() => {
-                if (window.confirm(`Terminate ${selectedAgent.agentName}? Its current task will stop and cannot be resumed.`)) void terminateAgent(selectedAgent.id).catch((cause) => setStatusMessage(cause instanceof Error ? cause.message : "Unable to terminate the agent."));
+                if (window.confirm(`Terminate ${selectedAgent.agentName}? Its task stops and can't be resumed.`)) void terminateAgent(selectedAgent.id).catch((cause) => setStatusMessage(cause instanceof Error ? cause.message : "Unable to terminate the agent."));
               }}>Terminate agent</button> : null}
             </div>
-          ) : <p className="empty-copy">Select an agent or graph node to inspect its evidence and state.</p>}
+          ) : <p className="empty-copy">Pick an agent or node to see its details.</p>}
         </section>
 
         <section className="inspector-section" aria-labelledby="recent-title">

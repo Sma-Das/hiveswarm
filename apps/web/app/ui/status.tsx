@@ -2,7 +2,7 @@ import type { AgentRunStatus, Severity } from "@hiveswarm/contracts";
 
 export function Status({ value }: { value: AgentRunStatus | "active" | "connected" | "paused" }) {
   const label = value.replaceAll("_", " ");
-  return <span className={`status status--${value}`}><span className="status__dot" aria-hidden="true" />{label}</span>;
+  return <span className={`status status--${value}`}><span className="status__dot" aria-hidden="true" /><span className="status__label">{label}</span></span>;
 }
 
 export function SeverityBadge({ severity }: { severity: Severity }) {
