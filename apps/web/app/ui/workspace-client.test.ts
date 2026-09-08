@@ -15,6 +15,66 @@ function json(body: unknown, status = 200) {
 }
 
 describe("WorkspaceClient", () => {
+  it.each(["resolve", "reject"])("suppresses JSON parsing that finishes late: %s", async (outcome) => {
+    let resolve!: (value: unknown) => void;
+    let reject!: (reason: Error) => void;
+    const pending = new Promise((yes, no) => { resolve = yes; reject = no; });
+    let started!: () => void;
+    const parsing = new Promise<void>((yes) => { started = yes; });
+    const client = new WorkspaceClient("http://api", async (input) => {
+      const url = String(input);
+      if (url.includes("projectId=first")) {
+        const response = json({});
+        response.json = () => { started(); return pending; };
+        return response;
+      }
+      if (url.includes("/dashboard")) return json(dashboard("second"));
+      if (url.endsWith("/agents")) return json({ agents: [] });
+      return json({ activeProjectId: "second", projects: [] });
+    });
+    const stale = client.load("first");
+    await parsing;
+    expect((await client.load("second"))?.dashboard.engagement.id).toBe("second");
+    if (outcome === "resolve") resolve(dashboard("first"));
+    else reject(new Error("Late malformed JSON"));
+    await expect(stale).resolves.toBeUndefined();
+  });
+
+  it("tracks SSE connectivity, coalesces bursts, and cancels queued refreshes on close", () => {
+    vi.useFakeTimers();
+    try {
+      const listeners = new Map<string, EventListener>();
+      const source = { onmessage: null as ((event: MessageEvent) => void) | null, close: vi.fn(), addEventListener: (type: string, listener: EventListener) => { listeners.set(type, listener); } };
+      const change = vi.fn();
+      const connection = vi.fn();
+      const client = new WorkspaceClient("http://api", vi.fn(), () => source);
+      const subscription = client.subscribe("run", change, connection);
+      const emit = (name: string) => listeners.get(name)!(new Event(name));
+      expect(connection).toHaveBeenLastCalledWith("connecting");
+      emit("open");
+      expect(connection).toHaveBeenLastCalledWith("connected");
+      emit("agent.log");
+      source.onmessage!(new MessageEvent("message"));
+      vi.advanceTimersByTime(50);
+      expect(change).toHaveBeenCalledTimes(1);
+      emit("error");
+      expect(connection).toHaveBeenLastCalledWith("reconnecting");
+      emit("open");
+      vi.advanceTimersByTime(50);
+      expect(change).toHaveBeenCalledTimes(2);
+      emit("agent.finding");
+      subscription.close();
+      emit("error");
+      emit("open");
+      vi.runAllTimers();
+      expect(change).toHaveBeenCalledTimes(2);
+      expect(connection.mock.calls.map(([state]) => state)).toEqual(["connecting", "connected", "reconnecting", "connected"]);
+      expect(source.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("suppresses a late project response after a newer load", async () => {
     let resolveFirst!: (response: Response) => void;
     const firstDashboard = new Promise<Response>((resolve) => { resolveFirst = resolve; });

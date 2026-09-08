@@ -24,7 +24,11 @@ npm run dev
 
 Open `http://localhost:3000`. The API runs at `http://localhost:4100`. Local development intentionally uses in-memory state and simulated execution, so the complete policy and UI flow can be evaluated without granting Docker authority or scanning a target.
 
-Use the project control in the top bar or sidebar to create and switch assessments. Each project owns an independent scope, run tree, graph, finding set, artifacts, activity stream, and report. The console offers separate XYFlow views for application topology, recursive swarm execution, and scope decisions; select a finding in a graph or list to open its evidence-path drawer and inspect structured node metadata.
+Use the project control in the top bar to switch assessments, and **New project** in navigation to create one. Each project owns an independent scope, run tree, graph, finding set, artifacts, activity stream, and report.
+
+The laptop-first console uses a light theme, shared shadcn/ui controls, and dedicated views for Overview, Assets, Findings, Specialists, Activity, Approvals, Scope, Report, and the agent registry. Overview brings pending decisions alongside the asset graph. Assets and Specialists offer list and graph views; Findings supports severity filtering, sorting, and evidence-path inspection. Details open in a keyboard-accessible sheet rather than permanently taking space from the workspace. On phones, navigation opens from the menu and run controls remain available.
+
+Approvals has a pending queue and decision history. It distinguishes one-time execution permission from scope proposals that update project rules. Reports include specialist coverage, evidence paths, artifacts, and limitations. Interrupted live updates display a stale-data warning. View URLs such as `/?view=findings` support bookmarking and browser history for the currently selected project.
 
 ## Hosted demo
 
@@ -86,8 +90,18 @@ See [architecture](docs/architecture.md), [agent packages](docs/agent-packages.m
 ```sh
 npm run typecheck
 npm test
+npm run test -w @hiveswarm/web
 npm run build
 docker compose -f docker-compose.yml -f docker-compose.docker-worker.yml -f docker-compose.agents.yml --profile agents config --quiet
 ```
+
+Browser verification uses deterministic, intercepted API fixtures and does not run scanners or require a running API:
+
+```sh
+npm exec -w @hiveswarm/web playwright install chromium
+npm run test:e2e -w @hiveswarm/web
+```
+
+The browser suite checks desktop and mobile workflows, control alignment, graph containment, focus restoration, project switching, reports, and automated WCAG checks. Screenshots and failed-test traces are written under `apps/web/test-results`. See the [console redesign review](docs/console-redesign.md) for design decisions and verification limits.
 
 Only test systems you own or are explicitly authorized to assess. HiveSwarm's controls reduce mistakes; they do not replace written authorization, target-side rate limits, data-handling rules, backups, or professional judgment.
