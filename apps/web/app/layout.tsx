@@ -10,15 +10,26 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  colorScheme: "dark",
-  themeColor: "#0a0a0a",
+  colorScheme: "light",
+  themeColor: "#ffffff",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
-        <a className="skip-link" href="#main">Skip to evaluation</a>
+        <span
+          hidden
+          dangerouslySetInnerHTML={{
+            __html:
+              "<!-- THESIS: Evidence-first operator workspace; no permanent three-pane squeeze. OWN-WORLD: white and graphite, orange mark, blue selection, Geist, aligned tables. STORY: inspect scope, supervise work, review authority, trace evidence. FIRST VIEWPORT: compact navigation, run controls, asset map, decision queue. FORM: user-pinned enterprise standard; Vercel, Wiz, Apple, Cloudflare. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md -->",
+          }}
+        />
+        <a className="skip-link" href="#main">
+          Skip to workspace
+        </a>
         {children}
       </body>
     </html>

@@ -27,6 +27,8 @@ import {
 } from "@xyflow/react";
 import { Bot, Box, Braces, CircleAlert, Cloud, Folder, Globe2, Network, RotateCcw, Server, UserRound } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import "./security-graph.css";
 
 const kindIcons = {
   engagement: Network,
@@ -269,7 +271,7 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
   }, [activeId, automaticNodes, fitGraph, setGraphNodes, storageKey]);
   useEffect(() => {
     const element = canvas.current;
-    if (!element) return;
+    if (!element || !compact) return;
     let frame = 0;
     const refit = () => {
       window.cancelAnimationFrame(frame);
@@ -283,7 +285,7 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
       observer.disconnect();
       window.removeEventListener("resize", refit);
     };
-  }, [fitGraph]);
+  }, [compact, fitGraph]);
   useEffect(() => {
     if (fitRequestKey === undefined || fitRequestKey === null) return;
     const frame = window.requestAnimationFrame(() => fitGraph(0));
@@ -302,11 +304,16 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
   const resetLayout = useCallback(() => {
     clearStoredPositions(storageKey);
     setGraphNodes(automaticNodes.map((node) => ({ ...node, selected: node.id === activeId })));
-    window.requestAnimationFrame(() => fitGraph(180));
+    window.requestAnimationFrame(() => fitGraph(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 180));
   }, [activeId, automaticNodes, fitGraph, setGraphNodes, storageKey]);
 
   return (
-    <div ref={canvas} className={`graph graph--${mode}`} role="region" aria-label={ariaLabel}>
+    <div ref={canvas} className={`graph graph--${mode}`} role="region" aria-label={ariaLabel} onKeyDownCapture={(event) => {
+      if (event.key !== "Enter" || !(event.target instanceof HTMLElement)) return;
+      const id = event.target.closest(".react-flow__node")?.getAttribute("data-id");
+      const node = graphNodes.find((item) => item.id === id);
+      if (node) { event.preventDefault(); event.stopPropagation(); selectNode(node); }
+    }}>
       <ReactFlow
         nodes={graphNodes}
         edges={graphEdges}
@@ -345,13 +352,15 @@ function GraphCanvas({ nodes, edges, mode, layoutId, ariaLabel, onSelect, select
         <Panel position="top-left"><GraphLegend mode={mode} /></Panel>
         {!compact ? <Panel position="top-right" className="graph-guide nodrag nopan">
           <span>Hold <kbd className="graph-kbd kbd">Space</kbd> to pan</span>
-          <button
+          <Button
             type="button"
-            className="graph-layout-reset nodrag nopan"
+            variant="outline"
+            size="sm"
+            className="nodrag nopan h-7 gap-1 bg-background px-2 text-[10px]"
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => { event.stopPropagation(); resetLayout(); }}
             onClick={(event) => { if (event.detail === 0) resetLayout(); }}
-          ><RotateCcw size={14} strokeWidth={1.7} aria-hidden="true" />Reset layout</button>
+          ><RotateCcw size={14} strokeWidth={1.7} aria-hidden="true" />Reset layout</Button>
         </Panel> : null}
         <Controls showInteractive={false} position="bottom-left" aria-label="Graph zoom controls" />
         {!compact ? <MiniMap position="bottom-right" pannable zoomable nodeColor={minimapNodeColor} nodeStrokeColor="var(--surface-app)" nodeStrokeWidth={6} nodeBorderRadius={4} maskColor="var(--minimap-mask)" maskStrokeColor="var(--separator-strong)" maskStrokeWidth={3} style={{ background: "var(--surface-canvas)" }} aria-label="Graph overview" /> : null}

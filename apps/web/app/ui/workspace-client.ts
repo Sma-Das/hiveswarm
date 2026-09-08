@@ -9,6 +9,7 @@ import {
 
 type FetchAdapter = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type EventSubscription = { close(): void };
+export type WorkspaceConnection = "connecting" | "connected" | "reconnecting";
 type EventSourceAdapter = EventSubscription & {
   onmessage: ((event: MessageEvent) => void) | null;
   addEventListener(type: string, listener: EventListener): void;
@@ -49,6 +50,10 @@ export class WorkspaceClient {
     private readonly eventSourceFactory: (url: string) => EventSourceAdapter = (url) => new EventSource(url),
   ) {}
 
+  invalidate(): void {
+    this.generation++;
+  }
+
   async load(projectId?: string): Promise<WorkspaceSnapshot | undefined> {
     const generation = ++this.generation;
     const projectQuery = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
@@ -66,21 +71,52 @@ export class WorkspaceClient {
     if (generation !== this.generation) return undefined;
     const [dashboardResponse, agentsResponse, projectsResponse] = responses;
     if (!dashboardResponse.ok || !agentsResponse.ok || !projectsResponse.ok) throw new Error("The orchestration API is unavailable.");
-    const dashboard = dashboardSchema.parse(await dashboardResponse.json());
-    const agentPayload = record(await agentsResponse.json());
-    const projectPayload = record(await projectsResponse.json());
-    const agents = agentManifestSchema.array().parse(agentPayload.agents);
-    const projects = projectSummarySchema.array().parse(projectPayload.projects);
-    if (typeof projectPayload.activeProjectId !== "string") throw new Error("The orchestration API returned an invalid project workspace.");
-    return { dashboard, agents, projects, activeProjectId: projectPayload.activeProjectId };
+    try {
+      const [dashboardPayload, agentsPayload, projectsPayload] = await Promise.all([
+        dashboardResponse.json(), agentsResponse.json(), projectsResponse.json(),
+      ]);
+      if (generation !== this.generation) return undefined;
+      const dashboard = dashboardSchema.parse(dashboardPayload);
+      const agentPayload = record(agentsPayload);
+      const projectPayload = record(projectsPayload);
+      const agents = agentManifestSchema.array().parse(agentPayload.agents);
+      const projects = projectSummarySchema.array().parse(projectPayload.projects);
+      if (typeof projectPayload.activeProjectId !== "string") throw new Error("The orchestration API returned an invalid project workspace.");
+      return { dashboard, agents, projects, activeProjectId: projectPayload.activeProjectId };
+    } catch (error) {
+      if (generation !== this.generation) return undefined;
+      throw error;
+    }
   }
 
-  subscribe(runId: string, onChange: () => void): EventSubscription {
+  subscribe(runId: string, onChange: () => void, onConnection?: (connection: WorkspaceConnection) => void): EventSubscription {
+    onConnection?.("connecting");
     const source = this.eventSourceFactory(`${this.apiUrl}/api/runs/${encodeURIComponent(runId)}/events`);
-    source.onmessage = onChange;
+    let closed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleChange = () => {
+      if (closed || timer !== undefined) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (!closed) onChange();
+      }, 50);
+    };
+    source.addEventListener("open", () => {
+      if (closed) return;
+      onConnection?.("connected");
+      scheduleChange();
+    });
+    source.addEventListener("error", () => {
+      if (!closed) onConnection?.("reconnecting");
+    });
+    source.onmessage = scheduleChange;
     ["agent.started", "agent.queued", "agent.completed", "agent.failed", "agent.terminated", "approval.requested", "approval.approved", "approval.denied", "agent.log", "agent.node", "agent.edge", "agent.finding", "agent.artifact", "agent.scope_proposal", "run.paused", "run.running"]
-      .forEach((eventName) => source.addEventListener(eventName, onChange as EventListener));
-    return source;
+      .forEach((eventName) => source.addEventListener(eventName, scheduleChange));
+    return { close() {
+      closed = true;
+      clearTimeout(timer);
+      source.close();
+    } };
   }
 
   async execute(command: WorkspaceCommand): Promise<WorkspaceCommandResult> {

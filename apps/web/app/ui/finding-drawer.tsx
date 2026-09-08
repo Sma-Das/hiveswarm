@@ -1,95 +1,216 @@
 "use client";
 
-import type { Dashboard, Finding, GraphNode } from "@hiveswarm/contracts";
-import { Braces, Route, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  findingEvidencePath,
+  type Dashboard,
+  type Finding,
+  type GraphNode,
+} from "@hiveswarm/contracts";
+import { Braces, Route } from "lucide-react";
+import { useId, useState } from "react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { FindingPathGraph } from "./security-graph";
 import { SeverityBadge } from "./status";
 
-const drawerTransitionMs = 180;
-
-export function FindingDrawer({ finding, dashboard, onClose }: { finding: Finding | null; dashboard: Dashboard; onClose: () => void }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const backdropPressStarted = useRef(false);
-  const closeTimer = useRef<number | null>(null);
-  const previousFindingId = useRef<string | null>(null);
-  const [presentedFinding, setPresentedFinding] = useState<Finding | null>(finding);
-  const [openCycle, setOpenCycle] = useState(0);
-  const [closing, setClosing] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-
-    if (closeTimer.current !== null) {
-      window.clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-
-    if (finding) {
-      if (previousFindingId.current !== finding.id) setSelectedNode(null);
-      previousFindingId.current = finding.id;
-      setPresentedFinding(finding);
-      setClosing(false);
-      if (!dialog.open) {
-        dialog.showModal();
-        setOpenCycle((cycle) => cycle + 1);
-      }
-      return;
-    }
-
-    if (!dialog.open) {
-      previousFindingId.current = null;
-      setPresentedFinding(null);
-      setSelectedNode(null);
-      return;
-    }
-
-    setClosing(true);
-    closeTimer.current = window.setTimeout(() => {
-      dialog.close();
-      closeTimer.current = null;
-      previousFindingId.current = null;
-      setClosing(false);
-      setPresentedFinding(null);
-      setSelectedNode(null);
-    }, drawerTransitionMs);
-
-    return () => {
-      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
-    };
-  }, [finding]);
-
+export function FindingDrawer({
+  finding,
+  dashboard,
+  onClose,
+}: {
+  finding: Finding | null;
+  dashboard: Dashboard;
+  onClose: () => void;
+}) {
   return (
-    <dialog
-      ref={ref}
-      className={`finding-drawer${closing ? " is-closing" : ""}`}
-      onPointerDown={(event) => { backdropPressStarted.current = event.target === event.currentTarget; }}
-      onPointerCancel={() => { backdropPressStarted.current = false; }}
-      onClick={(event) => {
-        const backdropClick = backdropPressStarted.current && event.target === event.currentTarget;
-        backdropPressStarted.current = false;
-        if (backdropClick) onClose();
+    <Sheet
+      open={Boolean(finding)}
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
-      onClose={() => { if (finding) onClose(); }}
-      onCancel={(event) => { event.preventDefault(); onClose(); }}
-      aria-labelledby="finding-drawer-title"
     >
-      {presentedFinding ? <div className="finding-drawer__surface">
-        <header className="finding-drawer__header">
-          <div><p className="eyebrow">Finding evidence</p><SeverityBadge severity={presentedFinding.severity} /><h2 id="finding-drawer-title">{presentedFinding.title}</h2><p>{presentedFinding.summary}</p></div>
-          <button type="button" className="icon-button" aria-label="Close finding" autoFocus onClick={onClose}><X size={19} aria-hidden="true" /></button>
-        </header>
-        <dl className="finding-facts"><div><dt>Asset</dt><dd><bdi>{presentedFinding.assetLabel}</bdi></dd></div><div><dt>Confidence</dt><dd>{Math.round(presentedFinding.confidence * 100)}%</dd></div><div><dt>Status</dt><dd>{presentedFinding.status}</dd></div><div><dt>Raised by</dt><dd>{presentedFinding.discoveredBy}</dd></div></dl>
-        <section className="finding-path-panel" aria-labelledby="finding-path-title">
-          <div className="section-label"><h3 id="finding-path-title">Evidence chain</h3><Route size={15} aria-hidden="true" /></div>
-          <div className="finding-path-graph"><FindingPathGraph dashboard={dashboard} finding={presentedFinding} selectedId={selectedNode?.id} fitRequestKey={`${presentedFinding.id}:${openCycle}`} onSelect={setSelectedNode} /></div>
-          {selectedNode ? <div className="structured-peek"><Braces size={15} aria-hidden="true" /><div><strong>{selectedNode.label}</strong><small>{selectedNode.kind} · {selectedNode.status ?? "observed"}</small></div><code>{JSON.stringify(selectedNode.metadata, null, 2)}</code></div> : null}
-        </section>
-        <section className="finding-section"><h3>Evidence</h3><ul>{presentedFinding.evidence.map((item) => <li key={item}>{item}</li>)}</ul></section>
-        <section className="finding-section finding-section--action"><h3>Recommended action</h3><p>{presentedFinding.remediation ?? "Validate the issue and define a risk-appropriate corrective action."}</p></section>
-      </div> : null}
-    </dialog>
+      {finding ? (
+        <FindingDetails
+          key={`${dashboard.engagement.id}:${finding.id}`}
+          finding={finding}
+          dashboard={dashboard}
+        />
+      ) : null}
+    </Sheet>
+  );
+}
+
+function FindingDetails({
+  finding,
+  dashboard,
+}: {
+  finding: Finding;
+  dashboard: Dashboard;
+}) {
+  const id = useId();
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const currentNode = selectedNode
+    ? findingEvidencePath(dashboard, finding).nodes.find(
+        (node) => node.id === selectedNode.id,
+      )
+    : undefined;
+  const hasRecordedPath = dashboard.graph.nodes.some(
+    (node) => node.metadata.findingId === finding.id,
+  );
+  return (
+    <SheetContent className="w-full gap-8 p-5 sm:max-w-3xl sm:p-8">
+      <SheetHeader className="gap-3">
+        <SeverityBadge severity={finding.severity} />
+        <SheetTitle className="break-words text-2xl leading-snug">
+          {finding.title}
+        </SheetTitle>
+        <SheetDescription className="whitespace-pre-wrap break-words">
+          {finding.summary}
+        </SheetDescription>
+      </SheetHeader>
+      <section aria-labelledby={`${id}-facts`}>
+        <h3 id={`${id}-facts`} className="sr-only">
+          Finding details
+        </h3>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-5 rounded-md border border-border bg-muted/40 p-4 text-sm">
+          <div className="col-span-2 min-w-0">
+            <dt className="text-muted-foreground">Asset</dt>
+            <dd className="mt-1 break-all font-medium">
+              <bdi>{finding.assetLabel}</bdi>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Confidence</dt>
+            <dd className="mt-1 font-medium tabular-nums">
+              {Math.round(finding.confidence * 100)}%
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Status</dt>
+            <dd className="mt-1 font-medium capitalize">{finding.status}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-muted-foreground">Raised by</dt>
+            <dd className="mt-1 break-words">{finding.discoveredBy}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-muted-foreground">Created</dt>
+            <dd className="mt-1 break-words">
+              <time dateTime={finding.createdAt}>{finding.createdAt}</time>
+            </dd>
+          </div>
+          {finding.agentRunId ? (
+            <div className="col-span-2 min-w-0">
+              <dt className="text-muted-foreground">Agent run</dt>
+              <dd className="mt-1 break-all font-mono text-xs">
+                {finding.agentRunId}
+              </dd>
+            </div>
+          ) : null}
+          <div className="col-span-2 min-w-0">
+            <dt className="text-muted-foreground">Finding ID</dt>
+            <dd className="mt-1 break-all font-mono text-xs">{finding.id}</dd>
+          </div>
+        </dl>
+      </section>
+      <section aria-labelledby={`${id}-path`} className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 id={`${id}-path`} className="text-base font-semibold">
+            Evidence chain
+          </h3>
+          <Route className="size-4 text-muted-foreground" aria-hidden="true" />
+        </div>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {hasRecordedPath
+            ? "Select a node to inspect its recorded metadata."
+            : "No linked evidence chain has been recorded. This graph shows the asset and finding from the finding record, not an independently observed path."}
+        </p>
+        <div className="relative h-72 min-h-72 overflow-hidden rounded-md border border-border bg-muted/30 sm:h-80 sm:min-h-80">
+          <FindingPathGraph
+            dashboard={dashboard}
+            finding={finding}
+            selectedId={currentNode?.id}
+            fitRequestKey={finding.id}
+            onSelect={setSelectedNode}
+          />
+        </div>
+        {currentNode ? (
+          <section
+            aria-labelledby={`${id}-node`}
+            className="space-y-3 rounded-md bg-muted p-4"
+          >
+            <div className="flex items-start gap-2">
+              <Braces
+                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <h4
+                  id={`${id}-node`}
+                  className="break-words text-sm font-semibold"
+                >
+                  {currentNode.label}
+                </h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {currentNode.kind}
+                  {currentNode.status ? ` / ${currentNode.status}` : ""}
+                </p>
+              </div>
+            </div>
+            {Object.keys(currentNode.metadata).length ? (
+              <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+                {JSON.stringify(currentNode.metadata, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No structured metadata recorded for this node.
+              </p>
+            )}
+          </section>
+        ) : null}
+      </section>
+      <section
+        aria-labelledby={`${id}-evidence`}
+        className="space-y-3 border-t border-border pt-6"
+      >
+        <h3 id={`${id}-evidence`} className="text-base font-semibold">
+          Evidence
+        </h3>
+        {finding.evidence.length ? (
+          <ul className="list-disc space-y-3 pl-5 text-sm leading-relaxed marker:text-muted-foreground">
+            {finding.evidence.map((item, index) => (
+              <li
+                key={`${index}-${item}`}
+                className="whitespace-pre-wrap break-words pl-1"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            No evidence entries have been recorded for this finding. Review the
+            evidence chain and execution logs before drawing conclusions.
+          </p>
+        )}
+      </section>
+      <section
+        aria-labelledby={`${id}-remediation`}
+        className="space-y-3 border-t border-border pt-6"
+      >
+        <h3 id={`${id}-remediation`} className="text-base font-semibold">
+          Recommended action
+        </h3>
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+          {finding.remediation ||
+            "No remediation has been recorded. Validate the finding and define a risk-appropriate corrective action."}
+        </p>
+      </section>
+    </SheetContent>
   );
 }

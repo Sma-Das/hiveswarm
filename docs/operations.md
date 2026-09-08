@@ -28,15 +28,23 @@ The console and API are separate Vercel projects. Configure `NEXT_PUBLIC_API_URL
 
 Create a project in the console. HiveSwarm adds one exact-host allow rule inferred from the primary URL/host. Add domain, URL-prefix, CIDR, and repository rules in Scope. Explicit deny rules always win. Use Run orchestrator to start the provider-selected or deterministic initial swarm.
 
-The project switcher summarizes status, agent count, and findings without merging evidence. A project can keep running after you switch away; callbacks, approvals, lifecycle controls, scope changes, and reports resolve against their originating project. Use Topology for assets and application relationships, Swarm for recursive execution provenance, Scope map for boundaries and human-review candidates, and a finding drawer for the supporting path and structured evidence.
+The project switcher summarizes status, agent count, and findings without merging evidence. A project can keep running after you switch away; callbacks, approvals, lifecycle controls, scope changes, and reports resolve against their originating project. Background mutation completion does not switch the visible project back. Inspect application relationships from Assets, recursive execution provenance from Specialists, and boundaries from Scope's graph toggle. Lists provide a keyboard-accessible alternative to graph exploration. Selecting a finding opens its supporting path, recorded evidence, and remediation in a side sheet.
+
+The top assessment bar preserves the API's actual lifecycle label, including waiting for approval, paused, completed, and failed. Pause/resume and specialist controls remain accessible on narrow screens. Overview prioritizes pending decisions before the graph on phones; the persistent approval count opens the complete queue from any view. Use `/` to focus the current evidence search, Escape to close a dialog or sheet, and browser Back/Forward to revisit views. View bookmarks retain the view, not a project identity.
+
+The project creation form previews the generated boundary. A URL creates a host allow rule: its scheme, port, and path do not narrow that rule. Add URL-prefix rules and exclusions explicitly before starting work. The built-in sample project is labeled as such; that label is not an execution-mode indicator. Execution mode still comes from API configuration.
 
 Scope proposals and sensitive capabilities pause only the affected action for a human decision. Approve once does not create a reusable capability grant. Explorer host approvals do create the exact requested allow rule and remove a matching exact deny rule. The activity feed and audit table preserve the decision trail.
+
+Approvals displays the complete requested action, rationale, request context, and originating run before the decision controls. Scope proposals use **Approve scope change** and warn that the resulting boundary persists. Ordinary execution requests use **Approve once**. The History filter shows approved, denied, and expired requests. Specialist creation displays all requested capabilities; sensitive capabilities default off, except the mandatory shell capability for the freeform package. A checkbox selection never replaces API policy or approval.
 
 Pause freezes active containers and prevents new spawns. Resume unfreezes sessions and dispatches queued agents. Terminate stops one selected specialist. Container controls are asynchronous, while API state changes immediately for operator feedback.
 
 ## Artifacts and reports
 
 Screenshots and reports are written to `hiveswarm-artifacts`, served through path-validated API routes, and linked from Report. The Markdown export is a live snapshot: retain it together with raw logs, screenshots, scope, tool versions, and authorization records according to the engagement's evidence policy.
+
+The report includes specialist coverage, findings, vulnerability paths, artifacts, and limitations. Report input is schema-validated in the console; failures show an explicit retry action instead of indefinite loading. If live updates disconnect or a workspace refresh fails, the console retains existing evidence and displays a warning. Do not treat retained evidence as current until connectivity is restored. No authentication, Docker authority, new outbound assessment traffic, or persistence migration is introduced by the console redesign.
 
 ## Subfinder preparation
 
