@@ -29,12 +29,15 @@ export function useProjectWorkspace() {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    return () => client.current!.cancelLoad();
+  }, [refresh]);
   useEffect(() => {
     if (!dashboard) return;
     const runId = dashboard.agents[0]?.runId ?? dashboard.engagement.id;
     const projectId = dashboard.engagement.id;
-    const subscription = client.current!.subscribe(runId, () => void refresh(projectId));
+    const subscription = client.current!.subscribe(runId, () => refresh(projectId));
     return () => subscription.close();
   }, [dashboard?.engagement.id, refresh]);
 

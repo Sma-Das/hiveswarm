@@ -24,6 +24,8 @@ npm run dev
 
 Open `http://localhost:3000`. The API runs at `http://localhost:4100`. Local development intentionally uses in-memory state and simulated execution, so the complete policy and UI flow can be evaluated without granting Docker authority or scanning a target.
 
+Live console updates are batched over 250 ms and wait for the previous refresh to finish, so event bursts do not create overlapping dashboard downloads. Switching projects cancels obsolete requests.
+
 Use the project control in the top bar or sidebar to create and switch assessments. Each project owns an independent scope, run tree, graph, finding set, artifacts, activity stream, and report. The console offers separate XYFlow views for application topology, recursive swarm execution, and scope decisions; select a finding in a graph or list to open its evidence-path drawer and inspect structured node metadata.
 
 ## Hosted demo

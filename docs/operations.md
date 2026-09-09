@@ -20,6 +20,8 @@ The `agents` Compose profile is a build catalog, not a long-running service set.
 
 ## Public Vercel demo
 
+The console batches live event notifications over 250 ms and allows one event-driven refresh at a time. Events arriving during a download trigger one follow-up refresh. Project changes and console unmounts cancel obsolete downloads; batching changes display timing, not policy decisions or stored evidence.
+
 The hosted Vercel path is a disposable product demonstration, not the complete stack. It uses the seeded in-memory store and simulated executor only. Do not configure a provider key, queue driver, database, Docker authority, source root, real target, credentials, or retained evidence on an internet-reachable demo.
 
 The console and API are separate Vercel projects. Configure `NEXT_PUBLIC_API_URL` with the API deployment URL. Configure the API with `STORAGE_DRIVER=memory`, `EXECUTION_DRIVER=simulated`, a strong `AGENT_CALLBACK_TOKEN`, and a comma-separated `WEB_ORIGIN` allowlist containing only the expected console domains. CORS is not API authentication: the demo exposes no user identity or tenant boundary, its state may reset on cold starts or deployment, and it must never be represented as a production assessment service.
