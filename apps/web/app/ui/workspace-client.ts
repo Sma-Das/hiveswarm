@@ -42,6 +42,7 @@ function record(value: unknown): Record<string, unknown> {
 
 export class WorkspaceClient {
   private generation = 0;
+  private pendingLoad: AbortController | undefined;
 
   constructor(
     private readonly apiUrl: string,
@@ -51,36 +52,75 @@ export class WorkspaceClient {
 
   async load(projectId?: string): Promise<WorkspaceSnapshot | undefined> {
     const generation = ++this.generation;
+    this.pendingLoad?.abort();
+    const controller = new AbortController();
+    this.pendingLoad = controller;
+    const init: RequestInit = { cache: "no-store", signal: controller.signal };
     const projectQuery = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     let responses: [Response, Response, Response];
     try {
       responses = await Promise.all([
-        this.fetchAdapter(`${this.apiUrl}/api/dashboard${projectQuery}`, { cache: "no-store" }),
-        this.fetchAdapter(`${this.apiUrl}/api/agents`, { cache: "no-store" }),
-        this.fetchAdapter(`${this.apiUrl}/api/projects`, { cache: "no-store" }),
+        this.fetchAdapter(`${this.apiUrl}/api/dashboard${projectQuery}`, init),
+        this.fetchAdapter(`${this.apiUrl}/api/agents`, init),
+        this.fetchAdapter(`${this.apiUrl}/api/projects`, init),
       ]);
+      if (generation !== this.generation) return undefined;
+      const [dashboardResponse, agentsResponse, projectsResponse] = responses;
+      if (!dashboardResponse.ok || !agentsResponse.ok || !projectsResponse.ok) throw new Error("The orchestration API is unavailable.");
+      const dashboard = dashboardSchema.parse(await dashboardResponse.json());
+      const agentPayload = record(await agentsResponse.json());
+      const projectPayload = record(await projectsResponse.json());
+      const agents = agentManifestSchema.array().parse(agentPayload.agents);
+      const projects = projectSummarySchema.array().parse(projectPayload.projects);
+      if (typeof projectPayload.activeProjectId !== "string") throw new Error("The orchestration API returned an invalid project workspace.");
+      if (generation !== this.generation) return undefined;
+      return { dashboard, agents, projects, activeProjectId: projectPayload.activeProjectId };
     } catch (error) {
       if (generation !== this.generation) return undefined;
       throw error;
+    } finally {
+      controller.abort();
+      if (this.pendingLoad === controller) this.pendingLoad = undefined;
     }
-    if (generation !== this.generation) return undefined;
-    const [dashboardResponse, agentsResponse, projectsResponse] = responses;
-    if (!dashboardResponse.ok || !agentsResponse.ok || !projectsResponse.ok) throw new Error("The orchestration API is unavailable.");
-    const dashboard = dashboardSchema.parse(await dashboardResponse.json());
-    const agentPayload = record(await agentsResponse.json());
-    const projectPayload = record(await projectsResponse.json());
-    const agents = agentManifestSchema.array().parse(agentPayload.agents);
-    const projects = projectSummarySchema.array().parse(projectPayload.projects);
-    if (typeof projectPayload.activeProjectId !== "string") throw new Error("The orchestration API returned an invalid project workspace.");
-    return { dashboard, agents, projects, activeProjectId: projectPayload.activeProjectId };
   }
 
-  subscribe(runId: string, onChange: () => void): EventSubscription {
+  cancelLoad(): void {
+    ++this.generation;
+    this.pendingLoad?.abort();
+    this.pendingLoad = undefined;
+  }
+
+  subscribe(runId: string, onChange: () => void | Promise<void>): EventSubscription {
     const source = this.eventSourceFactory(`${this.apiUrl}/api/runs/${encodeURIComponent(runId)}/events`);
-    source.onmessage = onChange;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let refreshing = false;
+    let dirty = false;
+    let closed = false;
+    // Bound both event bursts and slow responses without dropping the final update.
+    const schedule = () => {
+      if (closed) return;
+      dirty = true;
+      if (timer !== undefined || refreshing) return;
+      timer = setTimeout(async () => {
+        timer = undefined;
+        dirty = false;
+        refreshing = true;
+        try {
+          await onChange();
+        } finally {
+          refreshing = false;
+          if (dirty) schedule();
+        }
+      }, 250);
+    };
+    source.onmessage = schedule;
     ["agent.started", "agent.queued", "agent.completed", "agent.failed", "agent.terminated", "approval.requested", "approval.approved", "approval.denied", "agent.log", "agent.node", "agent.edge", "agent.finding", "agent.artifact", "agent.scope_proposal", "run.paused", "run.running"]
-      .forEach((eventName) => source.addEventListener(eventName, onChange as EventListener));
-    return source;
+      .forEach((eventName) => source.addEventListener(eventName, schedule));
+    return { close() {
+      closed = true;
+      clearTimeout(timer);
+      source.close();
+    } };
   }
 
   async execute(command: WorkspaceCommand): Promise<WorkspaceCommandResult> {
