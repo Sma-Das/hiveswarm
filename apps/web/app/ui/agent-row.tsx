@@ -28,34 +28,49 @@ export function AgentRow({
   agent,
   guides,
   selected,
+  compact,
   now,
   onSelect,
 }: {
   agent: AgentRun;
   guides: TreeGuide[];
   selected: boolean;
+  compact?: boolean;
   now: number;
   onSelect: () => void;
 }) {
   const Icon = icons[agent.agentId] ?? Bot;
   const running = agent.status === "running";
   return (
-    <button className={`agent-row${selected ? " is-selected" : ""}`} onClick={onSelect} aria-pressed={selected} style={{ "--depth": guides.length } as CSSProperties}>
-      <span className="agent-row__tree" aria-hidden="true">
-        {guides.map((guide, index) => guide === "empty" ? null : <span key={index} className={`tree-seg tree-seg--${guide}`} style={{ "--i": index } as CSSProperties} />)}
-      </span>
+    <button
+      className={`agent-row${selected ? " is-selected" : ""}`}
+      onClick={onSelect}
+      aria-pressed={selected}
+      aria-label={compact ? `${agent.agentName}, ${agent.status.replaceAll("_", " ")}` : undefined}
+      title={compact ? `${agent.agentName} · ${agent.status.replaceAll("_", " ")}` : undefined}
+      style={{ "--depth": compact ? 0 : guides.length } as CSSProperties}
+    >
+      {compact ? null : (
+        <span className="agent-row__tree" aria-hidden="true">
+          {guides.map((guide, index) => guide === "empty" ? null : <span key={index} className={`tree-seg tree-seg--${guide}`} style={{ "--i": index } as CSSProperties} />)}
+        </span>
+      )}
       <span className={`agent-row__icon status--${agent.status}`}>
         <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
         {running ? <span className="agent-row__ping" aria-hidden="true" /> : null}
       </span>
-      <span className="agent-row__copy">
-        <strong>{agent.agentName}</strong>
-        <Status value={agent.status} />
-      </span>
-      <span className="agent-row__telemetry">
-        <span className="agent-row__elapsed">{formatDuration(agent.startedAt, agent.completedAt, now)}</span>
-        <span>{agent.logCount} evt</span>
-      </span>
+      {compact ? null : (
+        <>
+          <span className="agent-row__copy">
+            <strong>{agent.agentName}</strong>
+            <Status value={agent.status} />
+          </span>
+          <span className="agent-row__telemetry">
+            <span className="agent-row__elapsed">{formatDuration(agent.startedAt, agent.completedAt, now)}</span>
+            <span>{agent.logCount} evt</span>
+          </span>
+        </>
+      )}
     </button>
   );
 }

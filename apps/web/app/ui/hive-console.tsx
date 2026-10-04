@@ -6,7 +6,7 @@ import {
   Activity, Bot, Boxes, ChevronDown, CircleDotDashed, Command, FileSearch, FileText,
   GitFork, Hexagon, LayoutDashboard, Network, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, Play, Plus, Search, SearchX, ShieldCheck, Target, Waypoints, X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { AgentRow, type TreeGuide } from "./agent-row";
 import { ApprovalCard } from "./approval-card";
@@ -69,6 +69,50 @@ function FilteredEmpty({ query, noun, onClear }: { query: string; noun: string; 
   );
 }
 
+const navCollapsedStorageKey = "hiveswarm.nav-collapsed";
+const navShortcutLabel = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘B" : "Ctrl+B";
+
+function readNavCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(navCollapsedStorageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function NavItem({
+  icon,
+  label,
+  count,
+  risk,
+  active,
+  collapsed,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  count?: number;
+  risk?: boolean;
+  active?: boolean;
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`nav-item ${active ? "is-active" : ""}`}
+      aria-current={active ? "page" : undefined}
+      aria-label={label}
+      title={collapsed ? label : undefined}
+      onClick={onClick}
+    >
+      {icon}
+      <span className="nav-item__label">{label}</span>
+      {count != null ? <span className={`nav-count${risk ? " nav-count--risk" : ""}`}>{count}</span> : null}
+    </button>
+  );
+}
+
 export function HiveConsole() {
   const { dashboard, agents, projects, activeProjectId, error, refresh, execute, loadReport } = useProjectWorkspace();
   const [activeView, setActiveView] = useState<EvidenceView>("topology");
@@ -86,21 +130,10 @@ export function HiveConsole() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [now, setNow] = useState(0);
-  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(readNavCollapsed);
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
-  const navPanelRef = useRef<PanelImperativeHandle>(null);
   const detailsPanelRef = useRef<PanelImperativeHandle>(null);
-  const toggleNav = () => {
-    const panel = navPanelRef.current;
-    if (!panel) return;
-    if (panel.isCollapsed()) {
-      panel.expand();
-      setNavCollapsed(false);
-    } else {
-      panel.collapse();
-      setNavCollapsed(true);
-    }
-  };
+  const toggleNav = () => setNavCollapsed((current) => !current);
   const toggleDetails = () => {
     const panel = detailsPanelRef.current;
     if (!panel) return;
@@ -121,6 +154,23 @@ export function HiveConsole() {
     tick();
     const id = setInterval(tick, 15_000);
     return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(navCollapsedStorageKey, navCollapsed ? "1" : "0");
+    } catch {}
+  }, [navCollapsed]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.shiftKey) return;
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "b") return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable=true]")) return;
+      event.preventDefault();
+      setNavCollapsed((current) => !current);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
   useEffect(() => {
     if (pageView !== "report") return;
@@ -267,7 +317,7 @@ export function HiveConsole() {
       {statusMessage ? <div className="status-toast"><span>{statusMessage}</span><button aria-label="Dismiss message" onClick={() => setStatusMessage("")}><X size={16} aria-hidden="true" /></button></div> : null}
       <header className="topbar">
         <div className="brand">
-          <button className="sidebar-toggle icon-button" aria-label={navCollapsed ? "Show sidebar" : "Hide sidebar"} aria-pressed={navCollapsed} onClick={toggleNav}>{navCollapsed ? <PanelLeft size={18} strokeWidth={1.5} aria-hidden="true" /> : <PanelLeftClose size={18} strokeWidth={1.5} aria-hidden="true" />}</button>
+          <button className="sidebar-toggle icon-button" aria-label={navCollapsed ? `Expand sidebar (${navShortcutLabel})` : `Collapse sidebar (${navShortcutLabel})`} aria-pressed={navCollapsed} title={navCollapsed ? `Expand sidebar (${navShortcutLabel})` : `Collapse sidebar (${navShortcutLabel})`} onClick={toggleNav}>{navCollapsed ? <PanelLeft size={18} strokeWidth={1.5} aria-hidden="true" /> : <PanelLeftClose size={18} strokeWidth={1.5} aria-hidden="true" />}</button>
           <a className="brand__home" href="/" aria-label="HiveSwarm home"><HiveMark small /><span>HiveSwarm</span><small>alpha</small></a>
         </div>
         <button className="breadcrumbs project-trigger" aria-label={`Switch project, current project ${dashboard.engagement.name}`} onClick={() => setProjectSwitcherOpen(true)}><span>Projects</span><span aria-hidden="true">/</span><strong>{dashboard.engagement.name}</strong><ChevronDown size={14} aria-hidden="true" /></button>
@@ -278,44 +328,32 @@ export function HiveConsole() {
         </div>
       </header>
 
-      <ResizablePanelGroup
-        className="app-panes"
-        orientation="horizontal"
-        resizeTargetMinimumSize={{ fine: 12, coarse: 36 }}
-      >
-      <ResizablePanel
-        id="navigation"
-        panelRef={navPanelRef}
-        defaultSize="15rem"
-        minSize="11rem"
-        maxSize="24rem"
-        collapsible
-        collapsedSize="0rem"
-        onResize={(size) => setNavCollapsed(size.inPixels < 1)}
-      >
-      <aside className="sidebar" aria-label="Workspace navigation" inert={navCollapsed || undefined} aria-hidden={navCollapsed || undefined}>
+      <div className="app-body">
+      <aside className="sidebar" aria-label="Workspace navigation">
         <nav className="primary-nav" aria-label="Primary">
-          <button className={`nav-item ${pageView === "evaluation" ? "is-active" : ""}`} aria-current={pageView === "evaluation" ? "page" : undefined} onClick={() => { setPageView("evaluation"); setActiveView("topology"); }}><LayoutDashboard size={17} strokeWidth={1.5} aria-hidden="true" />Evaluation</button>
-          <button className={`nav-item ${pageView === "registry" ? "is-active" : ""}`} aria-current={pageView === "registry" ? "page" : undefined} onClick={() => setPageView("registry")}><Bot size={17} strokeWidth={1.5} aria-hidden="true" />Agent registry<span className="nav-count">{agents.length}</span></button>
-          <button className={`nav-item ${pageView === "findings" ? "is-active" : ""}`} aria-current={pageView === "findings" ? "page" : undefined} onClick={() => { setPageView("findings"); setActiveView("findings"); }}><ShieldCheck size={17} strokeWidth={1.5} aria-hidden="true" />Findings<span className="nav-count nav-count--risk">{criticalCount}</span></button>
-          <button className={`nav-item ${pageView === "scope" ? "is-active" : ""}`} aria-current={pageView === "scope" ? "page" : undefined} onClick={() => setPageView("scope")}><Target size={17} strokeWidth={1.5} aria-hidden="true" />Scope</button>
-          <button className={`nav-item ${pageView === "report" ? "is-active" : ""}`} aria-current={pageView === "report" ? "page" : undefined} onClick={() => setPageView("report")}><FileText size={17} strokeWidth={1.5} aria-hidden="true" />Report</button>
+          <NavItem collapsed={navCollapsed} icon={<LayoutDashboard size={17} strokeWidth={1.5} aria-hidden="true" />} label="Evaluation" active={pageView === "evaluation"} onClick={() => { setPageView("evaluation"); setActiveView("topology"); }} />
+          <NavItem collapsed={navCollapsed} icon={<Bot size={17} strokeWidth={1.5} aria-hidden="true" />} label="Agent registry" count={agents.length} active={pageView === "registry"} onClick={() => setPageView("registry")} />
+          <NavItem collapsed={navCollapsed} icon={<ShieldCheck size={17} strokeWidth={1.5} aria-hidden="true" />} label="Findings" count={criticalCount} risk active={pageView === "findings"} onClick={() => { setPageView("findings"); setActiveView("findings"); }} />
+          <NavItem collapsed={navCollapsed} icon={<Target size={17} strokeWidth={1.5} aria-hidden="true" />} label="Scope" active={pageView === "scope"} onClick={() => setPageView("scope")} />
+          <NavItem collapsed={navCollapsed} icon={<FileText size={17} strokeWidth={1.5} aria-hidden="true" />} label="Report" active={pageView === "report"} onClick={() => setPageView("report")} />
         </nav>
 
         <section className="swarm-section" id="agent-swarm" aria-labelledby="swarm-title">
           <div className="section-label"><h2 id="swarm-title">Live swarm</h2><span>{dashboard.metrics.activeAgents} active</span></div>
           <div className="agent-tree">
-            {swarmRows.map(({ agent, guides }) => <AgentRow key={agent.id} agent={agent} guides={guides} now={clock} selected={agent.id === selectedAgentId} onSelect={() => setSelectedAgentId(agent.id)} />)}
+            {swarmRows.map(({ agent, guides }) => <AgentRow key={agent.id} agent={agent} guides={guides} compact={navCollapsed} now={clock} selected={agent.id === selectedAgentId} onSelect={() => setSelectedAgentId(agent.id)} />)}
           </div>
-          <button className="add-agent" onClick={() => setSpawnOpen(true)}><Plus size={16} strokeWidth={2} aria-hidden="true" />Start specialist</button>
+          <button className="add-agent" onClick={() => setSpawnOpen(true)} title={navCollapsed ? "Start specialist" : undefined} aria-label="Start specialist"><Plus size={16} strokeWidth={2} aria-hidden="true" /><span className="nav-item__label">Start specialist</span></button>
         </section>
 
-        <div className="utility-nav"><button className="nav-item" onClick={() => setEngagementOpen(true)}><Plus size={17} strokeWidth={1.5} aria-hidden="true" />New project</button></div>
+        <div className="utility-nav"><NavItem collapsed={navCollapsed} icon={<Plus size={17} strokeWidth={1.5} aria-hidden="true" />} label="New project" onClick={() => setEngagementOpen(true)} /></div>
       </aside>
-      </ResizablePanel>
 
-      <ResizableHandle withHandle className="resizable-handle--nav" aria-label="Resize navigation pane" />
-
+      <ResizablePanelGroup
+        className="app-panes"
+        orientation="horizontal"
+        resizeTargetMinimumSize={{ fine: 12, coarse: 36 }}
+      >
       <ResizablePanel id="workspace" minSize="26rem">
       <main className="workspace" id="main">
         {pageView === "evaluation" || pageView === "findings" ? <>
@@ -455,6 +493,7 @@ export function HiveConsole() {
       </aside>
       </ResizablePanel>
       </ResizablePanelGroup>
+      </div>
 
       <SpawnDialog open={spawnOpen} agents={agents} parentAgents={dashboard.agents} target={dashboard.engagement.target} onClose={() => setSpawnOpen(false)} onSpawn={spawn} />
       <EngagementDialog open={engagementOpen} onClose={() => setEngagementOpen(false)} onCreate={createEngagement} />
